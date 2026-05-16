@@ -79,7 +79,7 @@ export async function main(argv: string[]): Promise<number> {
   try {
     args = parseArgs(argv);
   } catch (err) {
-    stderr(`coverage-check store-put: ${err instanceof Error ? err.message : String(err)}`);
+    stderr(`coverage-check store-put: ${String(err)}`);
     return 2;
   }
   return runStorePut(args);
