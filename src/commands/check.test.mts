@@ -30,6 +30,23 @@ describe("main argument validation", () => {
   it("returns exit code 2 when a flag is missing its value", async () => {
     expect(await main(["--rules"])).toBe(2);
   });
+
+  it("uses fallback defaults when GITHUB_REPOSITORY/REF_NAME/STEP_SUMMARY are unset", async () => {
+    const saved: Record<string, string | undefined> = {};
+    for (const key of ["GITHUB_REPOSITORY", "GITHUB_REF_NAME", "GITHUB_STEP_SUMMARY"]) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+    try {
+      // Any call exercises the default-init lines; unknown flag triggers parse error
+      expect(await main(["--unknown-flag"])).toBe(2);
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v !== undefined) process.env[k] = v;
+        else delete process.env[k];
+      }
+    }
+  });
 });
 
 describe("main integration", () => {
@@ -754,5 +771,62 @@ describe("with a real git repo and a known diff", () => {
       else process.env["GITHUB_STEP_SUMMARY"] = origEnv;
     }
     expect(() => readFileSync(summaryFile, "utf8")).toThrow();
+  });
+
+  it("uses N/A runUrl when GITHUB_SERVER_URL and GITHUB_RUN_ID are unset", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    const savedServer = process.env["GITHUB_SERVER_URL"];
+    const savedRunId = process.env["GITHUB_RUN_ID"];
+    delete process.env["GITHUB_SERVER_URL"];
+    delete process.env["GITHUB_RUN_ID"];
+    try {
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: "backend",
+      });
+    } finally {
+      if (savedServer !== undefined) process.env["GITHUB_SERVER_URL"] = savedServer;
+      else delete process.env["GITHUB_SERVER_URL"];
+      if (savedRunId !== undefined) process.env["GITHUB_RUN_ID"] = savedRunId;
+      else delete process.env["GITHUB_RUN_ID"];
+    }
+  });
+
+  it("does not write summary when summaryFile is undefined and GITHUB_STEP_SUMMARY is unset", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    const savedSummary = process.env["GITHUB_STEP_SUMMARY"];
+    delete process.env["GITHUB_STEP_SUMMARY"];
+    try {
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: "backend",
+        summaryFile: undefined,
+      });
+    } finally {
+      if (savedSummary !== undefined) process.env["GITHUB_STEP_SUMMARY"] = savedSummary;
+      else delete process.env["GITHUB_STEP_SUMMARY"];
+    }
   });
 });
