@@ -78,7 +78,7 @@ export async function main(argv: string[]): Promise<number> {
   try {
     args = parseArgs(argv);
   } catch (err) {
-    /* c8 ignore next */
+    /* istanbul ignore next */
     stderr(`coverage-check store-put: ${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }

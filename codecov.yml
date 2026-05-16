@@ -1,6 +1,7 @@
 comment: false
 
 ignore:
+  - "bin/**"
   - "src/**/*.test.mts"
   - "src/types.mts"
   - "src/coverage-check.mts"
