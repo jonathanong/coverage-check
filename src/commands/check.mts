@@ -22,8 +22,7 @@ export async function main(argv: string[]): Promise<number> {
   try {
     args = parseCheckArgs(argv);
   } catch (err) {
-    /* istanbul ignore next */
-    stderr(`coverage-check: ${err instanceof Error ? err.message : err}`);
+    stderr(`coverage-check: ${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }
   return runCheck(args);
@@ -102,7 +101,6 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   if (!passed) {
     stdout("\ncoverage-check: FAILED\n");
     for (const bucket of buckets.filter((b) => !b.passed)) {
-      /* istanbul ignore next -- buckets always have coverable>0 by construction */
       const pct =
         bucket.coverable > 0 ? `${((bucket.hit / bucket.coverable) * 100).toFixed(1)}%` : "—";
       stdout(
@@ -115,7 +113,6 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   } else {
     stdout("\ncoverage-check: PASSED\n");
     for (const bucket of buckets) {
-      /* istanbul ignore next -- buckets always have coverable>0 by construction */
       const pct =
         bucket.coverable > 0 ? `${((bucket.hit / bucket.coverable) * 100).toFixed(1)}%` : "—";
       stdout(`  ${bucket.rule}: ${pct} ✓`);
