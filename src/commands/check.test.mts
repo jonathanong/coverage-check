@@ -109,6 +109,21 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("returns 2 when both --store-fs and --store-s3 are provided", async () => {
+    expect(
+      await main([
+        "--rules",
+        join(tmpDir, "nonexistent.yml"),
+        "--artifacts",
+        artifactsDir,
+        "--store-fs",
+        "/tmp/store",
+        "--store-s3",
+        "my-bucket",
+      ]),
+    ).toBe(2);
+  });
+
   it("accepts --store-s3 flag (parse succeeds, fails on missing rules)", async () => {
     expect(
       await main([

@@ -18,7 +18,7 @@ const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
 
 export async function main(argv: string[]): Promise<number> {
-  let args;
+  let args: CheckArgs;
   try {
     args = parseCheckArgs(argv);
   } catch (err) {

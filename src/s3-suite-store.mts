@@ -81,24 +81,22 @@ export class S3SuiteStore implements SuiteStore {
     meta: SuiteMeta & { sha: string; branch: string },
   ): Promise<void> {
     const ts = meta.timestamp ?? new Date().toISOString();
-    await Promise.all([
-      this.client.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: this.key(suite, "sha", meta.sha, "lcov.info"),
-          Body: lcov,
-          ContentType: "text/plain",
-        }),
-      ),
-      this.client.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: this.key(suite, "branch", meta.branch, "latest.json"),
-          Body: Buffer.from(JSON.stringify({ sha: meta.sha, timestamp: ts }), "utf8"),
-          ContentType: "application/json",
-        }),
-      ),
-    ]);
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: this.key(suite, "sha", meta.sha, "lcov.info"),
+        Body: lcov,
+        ContentType: "text/plain",
+      }),
+    );
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: this.key(suite, "branch", meta.branch, "latest.json"),
+        Body: Buffer.from(JSON.stringify({ sha: meta.sha, timestamp: ts }), "utf8"),
+        ContentType: "application/json",
+      }),
+    );
   }
 }
 

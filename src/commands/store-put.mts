@@ -65,6 +65,7 @@ function parseArgs(argv: string[]): StorePutArgs {
   }
 
   if (!args.suite) throw new Error("--suite is required");
+  if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
   if (!storeFs && !storeS3) throw new Error("--store or --store-s3 is required");
   if (!args.sha) throw new Error("--sha is required");
   if (!args.branch) throw new Error("--branch is required");

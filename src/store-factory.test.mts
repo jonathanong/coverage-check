@@ -18,6 +18,22 @@ describe("parseS3Spec", () => {
   it("handles a single-segment prefix", () => {
     expect(parseS3Spec("bucket/prefix")).toEqual({ bucket: "bucket", prefix: "prefix" });
   });
+
+  it("throws when spec starts with a slash (empty bucket)", () => {
+    expect(() => parseS3Spec("/prefix")).toThrow("bucket must not be empty");
+  });
+
+  it("throws when spec is empty", () => {
+    expect(() => parseS3Spec("")).toThrow("bucket must not be empty");
+  });
+
+  it("omits prefix when trailing slash yields empty prefix", () => {
+    expect(parseS3Spec("bucket/")).toEqual({ bucket: "bucket" });
+  });
+
+  it("normalizes double slashes in prefix", () => {
+    expect(parseS3Spec("bucket//foo")).toEqual({ bucket: "bucket", prefix: "foo" });
+  });
 });
 
 describe("makeStore", () => {

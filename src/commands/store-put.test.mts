@@ -39,6 +39,23 @@ describe("main argument parsing", () => {
     ).toBe(2);
   });
 
+  it("returns 2 when both --store-fs and --store-s3 are provided", async () => {
+    expect(
+      await main([
+        "--suite",
+        "backend",
+        "--store-fs",
+        "/tmp/s",
+        "--store-s3",
+        "bucket",
+        "--sha",
+        "abc",
+        "--branch",
+        "main",
+      ]),
+    ).toBe(2);
+  });
+
   it("returns 2 on unknown flag", async () => {
     expect(
       await main([

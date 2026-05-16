@@ -93,6 +93,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     }
   }
 
+  if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
   args.store = makeStore({ fs: storeFs, s3: storeS3 });
   return args;
 }
