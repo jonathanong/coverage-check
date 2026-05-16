@@ -124,7 +124,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
 
   const summaryFile = args.summaryFile ?? process.env["GITHUB_STEP_SUMMARY"] ?? null;
   if (summaryFile) {
-    writeSummary(summaryFile, suiteSources, result, runUrl);
+    writeSummary(summaryFile, suiteSources, result, runUrl, branch);
   }
 
   if (args.pr !== null && args.repo) {

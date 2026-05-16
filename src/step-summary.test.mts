@@ -70,6 +70,16 @@ describe("buildSummaryMarkdown", () => {
     expect(md).toContain("store (main)");
   });
 
+  it("uses the provided branch name in store source label", () => {
+    const md = buildSummaryMarkdown(
+      [storeSource],
+      passResult,
+      "https://example.com/run/1",
+      "feature/my-branch",
+    );
+    expect(md).toContain("store (feature/my-branch)");
+  });
+
   it("shows line coverage percentage for suite", () => {
     const md = buildSummaryMarkdown([freshSource], passResult, "https://example.com/run/1");
     // 2/3 lines covered = 66.7%
@@ -117,9 +127,16 @@ describe("buildSummaryMarkdown", () => {
     expect(md).toContain("| — | — | — | — |");
   });
 
-  it("includes run link", () => {
+  it("includes run link when runUrl is a valid URL", () => {
     const md = buildSummaryMarkdown([], passResult, "https://example.com/run/42");
     expect(md).toContain("https://example.com/run/42");
+    expect(md).toContain("[View run]");
+  });
+
+  it("omits run link when runUrl is N/A", () => {
+    const md = buildSummaryMarkdown([], passResult, "N/A");
+    expect(md).not.toContain("[View run]");
+    expect(md).not.toContain("N/A");
   });
 });
 

@@ -1,5 +1,10 @@
 comment: false
 
+ignore:
+  - "src/**/*.test.mts"
+  - "src/types.mts"
+  - "src/coverage-check.mts"
+
 coverage:
   status:
     project:

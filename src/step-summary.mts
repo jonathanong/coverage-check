@@ -29,11 +29,12 @@ export function buildSummaryMarkdown(
   suiteSources: SuiteSource[],
   result: CoverageCheckResult,
   runUrl: string,
+  branch = "main",
 ): string {
   const suiteRows = suiteSources
     .map(({ suite, source, lcov }) => {
       const { hit, total } = suiteTotals(lcov);
-      const sourceLabel = source === "fresh" ? "fresh" : "store (main)";
+      const sourceLabel = source === "fresh" ? "fresh" : `store (${branch})`;
       return `| \`${suite}\` | ${sourceLabel} | ${pctStr(hit, total)} |`;
     })
     .join("\n");
@@ -59,6 +60,7 @@ export function buildSummaryMarkdown(
   ].join("\n");
 
   const overall = result.passed ? "✅ passed" : "❌ failed";
+  const runLink = runUrl !== "N/A" ? `\n\n_[View run](${runUrl})_` : "";
 
   return `## Coverage summary — ${overall}
 
@@ -68,9 +70,7 @@ ${suiteTable}
 
 ### Patch coverage
 
-${ruleTable}
-
-_[View run](${runUrl})_
+${ruleTable}${runLink}
 `;
 }
 
@@ -79,6 +79,7 @@ export function writeSummary(
   suiteSources: SuiteSource[],
   result: CoverageCheckResult,
   runUrl: string,
+  branch?: string,
 ): void {
-  appendFileSync(summaryFile, buildSummaryMarkdown(suiteSources, result, runUrl), "utf8");
+  appendFileSync(summaryFile, buildSummaryMarkdown(suiteSources, result, runUrl, branch), "utf8");
 }
