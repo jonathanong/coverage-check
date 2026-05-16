@@ -33,7 +33,9 @@ function parseArgs(argv: string[]): StorePutArgs {
     const flag = argv[i]!;
     const next = argv[i + 1];
     const val = (): string => {
-      if (next === undefined) throw new Error(`${flag} requires a value`);
+      if (next === undefined || next.startsWith("--")) {
+        throw new Error(`${flag} requires a value`);
+      }
       i++;
       return next;
     };

@@ -43,7 +43,9 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     const flag = argv[i]!;
     const next = argv[i + 1];
     const val = (): string => {
-      if (next === undefined) throw new Error(`${flag} requires a value`);
+      if (next === undefined || next.startsWith("--")) {
+        throw new Error(`${flag} requires a value`);
+      }
       i++;
       return next;
     };
@@ -101,6 +103,8 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
   }
 
   if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
+  if (args.pr !== null && args.repo.trim() === "")
+    throw new Error("--repo is required when --pr is set (or define GITHUB_REPOSITORY)");
   args.store = makeStore({ fs: storeFs, s3: storeS3 });
   return args;
 }

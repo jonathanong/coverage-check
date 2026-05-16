@@ -3,7 +3,14 @@ import { join } from "node:path";
 import type { SuiteMeta } from "./types.mts";
 
 export function assertSafePathComponent(value: string, label: string): void {
-  if (!value || value === "." || value === ".." || value.includes("/") || value.includes("\\")) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value === "." ||
+    value === ".." ||
+    value.includes("/") ||
+    value.includes("\\")
+  ) {
     throw new Error(`invalid ${label}: ${JSON.stringify(value)}`);
   }
 }

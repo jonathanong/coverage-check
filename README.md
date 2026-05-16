@@ -50,7 +50,7 @@ The `--suite` flag on `check` tells the tool to use fresh `--artifacts` for the 
 
 **S3 key layout:**
 
-```
+```text
 <prefix>/<suite>/sha/<sha>/lcov.info          # payload
 <prefix>/<suite>/branch/<branch>/latest.json  # pointer: { "sha": "...", "timestamp": "..." }
 ```

@@ -101,7 +101,9 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   if (!passed) {
     stdout("\ncoverage-check: FAILED\n");
     for (const bucket of buckets.filter((b) => !b.passed)) {
-      const pct = `${((bucket.hit / bucket.coverable) * 100).toFixed(1)}%`;
+      /* c8 ignore next -- bucket.coverable is always > 0 by patch-coverage.mts L36 guard */
+      const pct =
+        bucket.coverable > 0 ? `${((bucket.hit / bucket.coverable) * 100).toFixed(1)}%` : "—";
       stdout(
         `  ${bucket.rule}: ${pct} (${bucket.hit}/${bucket.coverable}) — threshold ${bucket.threshold}%`,
       );
@@ -112,7 +114,9 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   } else {
     stdout("\ncoverage-check: PASSED\n");
     for (const bucket of buckets) {
-      const pct = `${((bucket.hit / bucket.coverable) * 100).toFixed(1)}%`;
+      /* c8 ignore next -- bucket.coverable is always > 0 by patch-coverage.mts L36 guard */
+      const pct =
+        bucket.coverable > 0 ? `${((bucket.hit / bucket.coverable) * 100).toFixed(1)}%` : "—";
       stdout(`  ${bucket.rule}: ${pct} ✓`);
     }
   }

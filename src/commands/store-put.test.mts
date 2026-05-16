@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main, runStorePut } from "./store-put.mts";
 import { FileSystemSuiteStore } from "../suite-store.mts";
 
@@ -22,21 +22,37 @@ describe("main argument parsing", () => {
     expect(await main(["--suite", "backend", "--store", "/tmp/s", "--sha", "abc"])).toBe(2);
   });
 
-  it("accepts --store-s3 flag (returns 2 when no lcov files)", async () => {
-    expect(
-      await main([
-        "--suite",
-        "backend",
-        "--store-s3",
-        "my-bucket/prefix",
-        "--sha",
-        "abc",
-        "--branch",
-        "main",
-        "--artifacts",
-        "/tmp/__nonexistent_dir__",
-      ]),
-    ).toBe(2);
+  it("returns 2 when a flag token follows as the value (e.g. --suite --store)", async () => {
+    expect(await main(["--suite", "--store"])).toBe(2);
+  });
+
+  it("accepts --store-s3 flag (returns 2 when no lcov files, not unknown-flag error)", async () => {
+    const chunks: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((c: unknown) => {
+      chunks.push(String(c));
+      return true;
+    });
+    try {
+      expect(
+        await main([
+          "--suite",
+          "backend",
+          "--store-s3",
+          "my-bucket/prefix",
+          "--sha",
+          "abc",
+          "--branch",
+          "main",
+          "--artifacts",
+          "/tmp/__nonexistent_dir__",
+        ]),
+      ).toBe(2);
+      const stderr = chunks.join("");
+      expect(stderr).toContain("no lcov.info files found");
+      expect(stderr).not.toContain("unknown flag");
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("returns 2 when both --store-fs and --store-s3 are provided", async () => {

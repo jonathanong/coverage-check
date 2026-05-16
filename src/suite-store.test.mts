@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FileSystemSuiteStore } from "./suite-store.mts";
+import { assertSafePathComponent, FileSystemSuiteStore } from "./suite-store.mts";
 
 describe("FileSystemSuiteStore", () => {
   let tmpDir: string;
@@ -198,5 +198,12 @@ describe("FileSystemSuiteStore", () => {
         ).rejects.toThrow("invalid branch");
       });
     }
+  });
+});
+
+describe("assertSafePathComponent", () => {
+  it("rejects non-string values at runtime (e.g. from JSON.parse)", () => {
+    expect(() => assertSafePathComponent(123 as unknown as string, "sha")).toThrow("invalid sha");
+    expect(() => assertSafePathComponent(null as unknown as string, "sha")).toThrow("invalid sha");
   });
 });

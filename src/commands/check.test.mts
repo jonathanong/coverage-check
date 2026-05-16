@@ -31,6 +31,21 @@ describe("main argument validation", () => {
     expect(await main(["--rules"])).toBe(2);
   });
 
+  it("returns exit code 2 when a flag token follows as the value (e.g. --rules --pr)", async () => {
+    expect(await main(["--rules", "--pr"])).toBe(2);
+  });
+
+  it("returns exit code 2 when --pr is set but repo is empty", async () => {
+    const saved = process.env["GITHUB_REPOSITORY"];
+    delete process.env["GITHUB_REPOSITORY"];
+    try {
+      expect(await main(["--pr", "42"])).toBe(2);
+    } finally {
+      if (saved !== undefined) process.env["GITHUB_REPOSITORY"] = saved;
+      else delete process.env["GITHUB_REPOSITORY"];
+    }
+  });
+
   it("uses fallback defaults when GITHUB_REPOSITORY/REF_NAME/STEP_SUMMARY are unset", async () => {
     const saved: Record<string, string | undefined> = {};
     for (const key of ["GITHUB_REPOSITORY", "GITHUB_REF_NAME", "GITHUB_STEP_SUMMARY"]) {
