@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SuiteMeta } from "./types.mts";
 
-function assertSafePathComponent(value: string, label: string): void {
+export function assertSafePathComponent(value: string, label: string): void {
   if (!value || value === "." || value === ".." || value.includes("/") || value.includes("\\")) {
     throw new Error(`invalid ${label}: ${JSON.stringify(value)}`);
   }

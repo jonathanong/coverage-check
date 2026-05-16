@@ -34,7 +34,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     stripPrefixes: [],
     store: null,
     suite: null,
-    branch: process.env["GITHUB_REF_NAME"] ?? "main",
+    branch: "main",
     summaryFile: process.env["GITHUB_STEP_SUMMARY"] ?? null,
   };
 

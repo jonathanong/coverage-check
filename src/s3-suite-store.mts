@@ -6,6 +6,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { assertSafePathComponent } from "./suite-store.mts";
 import type { SuiteMeta, SuiteStore } from "./suite-store.mts";
 
 type ClientLike = { send(cmd: object): Promise<unknown> };
@@ -61,9 +62,12 @@ export class S3SuiteStore implements SuiteStore {
   }
 
   async get(suite: string, opts?: { sha?: string; branch?: string }): Promise<Buffer | null> {
+    assertSafePathComponent(suite, "suite");
+    if (opts?.sha !== undefined) assertSafePathComponent(opts.sha, "sha");
     let sha = opts?.sha;
     if (!sha) {
       const branch = opts?.branch ?? "main";
+      assertSafePathComponent(branch, "branch");
       try {
         const resp = (await this.client.send(
           new GetObjectCommand({
@@ -97,6 +101,9 @@ export class S3SuiteStore implements SuiteStore {
     lcov: Buffer,
     meta: SuiteMeta & { sha: string; branch: string },
   ): Promise<void> {
+    assertSafePathComponent(suite, "suite");
+    assertSafePathComponent(meta.sha, "sha");
+    assertSafePathComponent(meta.branch, "branch");
     const ts = meta.timestamp ?? new Date().toISOString();
     await this.client.send(
       new PutObjectCommand({

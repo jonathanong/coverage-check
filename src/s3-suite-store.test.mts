@@ -261,3 +261,38 @@ describe("S3SuiteStore — put()", () => {
     expect(keys).toContain("backend/branch/main/latest.json");
   });
 });
+
+describe("S3SuiteStore — path traversal protection", () => {
+  const store = new S3SuiteStore({
+    bucket: BUCKET,
+    prefix: PREFIX,
+    client: makeClient(async () => ({})),
+  });
+  const invalid = ["", ".", "..", "a/b", "a\\b"];
+  for (const val of invalid) {
+    it(`get() rejects suite=${JSON.stringify(val)}`, async () => {
+      await expect(store.get(val)).rejects.toThrow("invalid suite");
+    });
+    it(`get() rejects branch=${JSON.stringify(val)}`, async () => {
+      await expect(store.get("backend", { branch: val })).rejects.toThrow("invalid branch");
+    });
+    it(`get() rejects sha=${JSON.stringify(val)}`, async () => {
+      await expect(store.get("backend", { sha: val })).rejects.toThrow("invalid sha");
+    });
+    it(`put() rejects suite=${JSON.stringify(val)}`, async () => {
+      await expect(store.put(val, Buffer.from(""), { sha: "abc", branch: "main" })).rejects.toThrow(
+        "invalid suite",
+      );
+    });
+    it(`put() rejects sha=${JSON.stringify(val)}`, async () => {
+      await expect(
+        store.put("backend", Buffer.from(""), { sha: val, branch: "main" }),
+      ).rejects.toThrow("invalid sha");
+    });
+    it(`put() rejects branch=${JSON.stringify(val)}`, async () => {
+      await expect(
+        store.put("backend", Buffer.from(""), { sha: "abc", branch: val }),
+      ).rejects.toThrow("invalid branch");
+    });
+  }
+});
