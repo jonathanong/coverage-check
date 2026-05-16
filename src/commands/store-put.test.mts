@@ -7,15 +7,52 @@ import { FileSystemSuiteStore } from "../suite-store.mts";
 
 describe("main argument parsing", () => {
   it("returns 2 when --suite is missing", async () => {
-    expect(await main(["--store", "/tmp/store"])).toBe(2);
+    expect(await main(["--store", "/tmp/store", "--sha", "abc", "--branch", "main"])).toBe(2);
   });
 
   it("returns 2 when --store is missing", async () => {
-    expect(await main(["--suite", "backend"])).toBe(2);
+    expect(await main(["--suite", "backend", "--sha", "abc", "--branch", "main"])).toBe(2);
+  });
+
+  it("returns 2 when --sha is missing", async () => {
+    expect(await main(["--suite", "backend", "--store", "/tmp/s", "--branch", "main"])).toBe(2);
+  });
+
+  it("returns 2 when --branch is missing", async () => {
+    expect(await main(["--suite", "backend", "--store", "/tmp/s", "--sha", "abc"])).toBe(2);
+  });
+
+  it("accepts --store-s3 flag (returns 2 when no lcov files)", async () => {
+    expect(
+      await main([
+        "--suite",
+        "backend",
+        "--store-s3",
+        "my-bucket/prefix",
+        "--sha",
+        "abc",
+        "--branch",
+        "main",
+        "--artifacts",
+        "/tmp/__nonexistent_dir__",
+      ]),
+    ).toBe(2);
   });
 
   it("returns 2 on unknown flag", async () => {
-    expect(await main(["--suite", "backend", "--store", "/tmp/s", "--unknown"])).toBe(2);
+    expect(
+      await main([
+        "--suite",
+        "backend",
+        "--store",
+        "/tmp/s",
+        "--sha",
+        "abc",
+        "--branch",
+        "main",
+        "--unknown",
+      ]),
+    ).toBe(2);
   });
 
   it("returns 2 when a flag is missing its value", async () => {
@@ -27,6 +64,7 @@ describe("runStorePut", () => {
   let tmpDir: string;
   let artifactsDir: string;
   let storeDir: string;
+  let store: FileSystemSuiteStore;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "store-put-test-"));
@@ -34,6 +72,7 @@ describe("runStorePut", () => {
     storeDir = join(tmpDir, "store");
     mkdirSync(artifactsDir);
     mkdirSync(storeDir);
+    store = new FileSystemSuiteStore(storeDir);
   });
 
   afterEach(() => {
@@ -44,11 +83,11 @@ describe("runStorePut", () => {
     expect(
       await runStorePut({
         suite: "backend",
-        store: storeDir,
+        store,
         artifacts: artifactsDir,
         stripPrefixes: [],
-        sha: null,
-        ref: null,
+        sha: "abc123",
+        branch: "main",
       }),
     ).toBe(2);
   });
@@ -62,19 +101,18 @@ describe("runStorePut", () => {
     expect(
       await runStorePut({
         suite: "backend",
-        store: storeDir,
+        store,
         artifacts: artifactsDir,
         stripPrefixes: [],
         sha: "abc123",
-        ref: "refs/heads/main",
+        branch: "main",
       }),
     ).toBe(0);
 
-    const store = new FileSystemSuiteStore(storeDir);
     const suites = await store.list();
     expect(suites).toContain("backend");
 
-    const buf = await store.get("backend");
+    const buf = await store.get("backend", { branch: "main" });
     expect(buf).not.toBeNull();
     const lcovText = buf!.toString();
     expect(lcovText).toContain("SF:backend/foo.mts");
@@ -90,22 +128,21 @@ describe("runStorePut", () => {
     expect(
       await runStorePut({
         suite: "backend",
-        store: storeDir,
+        store,
         artifacts: artifactsDir,
         stripPrefixes: [],
-        sha: null,
-        ref: null,
+        sha: "abc123",
+        branch: "main",
       }),
     ).toBe(0);
 
-    const store = new FileSystemSuiteStore(storeDir);
-    const buf = await store.get("backend");
+    const buf = await store.get("backend", { branch: "main" });
     const lcovText = buf!.toString();
     expect(lcovText).toContain("SF:backend/a.mts");
     expect(lcovText).toContain("SF:backend/b.mts");
   });
 
-  it("accepts --strip-prefix flag", async () => {
+  it("accepts --strip-prefix flag via main()", async () => {
     writeFileSync(
       join(artifactsDir, "lcov.info"),
       "SF:/home/runner/work/repo/backend/foo.mts\nDA:1,1\nend_of_record\n",
@@ -121,13 +158,37 @@ describe("runStorePut", () => {
         artifactsDir,
         "--strip-prefix",
         "/home/runner/work/repo",
+        "--sha",
+        "abc123",
+        "--branch",
+        "main",
       ]),
     ).toBe(0);
 
-    const store = new FileSystemSuiteStore(storeDir);
-    const buf = await store.get("backend");
-    // After stripping the prefix, the stored lcov should have the normalized path
+    const buf = await store.get("backend", { branch: "main" });
     expect(buf!.toString()).toContain("SF:backend/foo.mts");
+  });
+
+  it("--store-fs is an alias for --store", async () => {
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:web/app.tsx\nDA:10,1\nend_of_record\n");
+
+    expect(
+      await main([
+        "--suite",
+        "frontend",
+        "--store-fs",
+        storeDir,
+        "--artifacts",
+        artifactsDir,
+        "--sha",
+        "deadbeef",
+        "--branch",
+        "main",
+      ]),
+    ).toBe(0);
+
+    const stored = readFileSync(join(storeDir, "frontend", "sha", "deadbeef", "lcov.info"), "utf8");
+    expect(stored).toContain("SF:web/app.tsx");
   });
 
   it("round-trips through main() CLI interface", async () => {
@@ -143,12 +204,12 @@ describe("runStorePut", () => {
         artifactsDir,
         "--sha",
         "deadbeef",
-        "--ref",
-        "refs/heads/feat",
+        "--branch",
+        "main",
       ]),
     ).toBe(0);
 
-    const stored = readFileSync(join(storeDir, "frontend", "lcov.info"), "utf8");
+    const stored = readFileSync(join(storeDir, "frontend", "sha", "deadbeef", "lcov.info"), "utf8");
     expect(stored).toContain("SF:web/app.tsx");
   });
 });

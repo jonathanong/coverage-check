@@ -2,28 +2,30 @@ import { readFileSync } from "node:fs";
 import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov, toLcov } from "../lcov-merge.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
-import { FileSystemSuiteStore } from "../suite-store.mts";
+import { makeStore } from "../store-factory.mts";
+import type { SuiteStore } from "../suite-store.mts";
 
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
 
 export type StorePutArgs = {
   suite: string;
-  store: string;
+  store: SuiteStore;
   artifacts: string;
   stripPrefixes: string[];
-  sha: string | null;
-  ref: string | null;
+  sha: string;
+  branch: string;
 };
 
 function parseArgs(argv: string[]): StorePutArgs {
-  const args: StorePutArgs = {
+  let storeFs: string | null = null;
+  let storeS3: string | null = null;
+  const args = {
     suite: "",
-    store: "",
     artifacts: "./coverage-artifacts",
-    stripPrefixes: [],
-    sha: null,
-    ref: null,
+    stripPrefixes: [] as string[],
+    sha: "",
+    branch: "",
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -39,7 +41,11 @@ function parseArgs(argv: string[]): StorePutArgs {
         args.suite = val();
         break;
       case "--store":
-        args.store = val();
+      case "--store-fs":
+        storeFs = val();
+        break;
+      case "--store-s3":
+        storeS3 = val();
         break;
       case "--artifacts":
         args.artifacts = val();
@@ -50,8 +56,8 @@ function parseArgs(argv: string[]): StorePutArgs {
       case "--sha":
         args.sha = val();
         break;
-      case "--ref":
-        args.ref = val();
+      case "--branch":
+        args.branch = val();
         break;
       default:
         throw new Error(`unknown flag: ${flag}`);
@@ -59,8 +65,12 @@ function parseArgs(argv: string[]): StorePutArgs {
   }
 
   if (!args.suite) throw new Error("--suite is required");
-  if (!args.store) throw new Error("--store is required");
-  return args;
+  if (!storeFs && !storeS3) throw new Error("--store or --store-s3 is required");
+  if (!args.sha) throw new Error("--sha is required");
+  if (!args.branch) throw new Error("--branch is required");
+
+  const store = makeStore({ fs: storeFs, s3: storeS3 })!;
+  return { ...args, store };
 }
 
 export async function main(argv: string[]): Promise<number> {
@@ -69,7 +79,7 @@ export async function main(argv: string[]): Promise<number> {
     args = parseArgs(argv);
   } catch (err) {
     /* c8 ignore next */
-    stderr(`coverage-check store-put: ${err instanceof Error ? err.message : err}`);
+    stderr(`coverage-check store-put: ${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }
   return runStorePut(args);
@@ -87,14 +97,13 @@ export async function runStorePut(args: StorePutArgs): Promise<number> {
   const merged = mergeLcov(reports);
   const lcovText = toLcov(merged);
 
-  const store = new FileSystemSuiteStore(args.store);
-  await store.put(args.suite, Buffer.from(lcovText, "utf8"), {
-    sha: args.sha ?? undefined,
-    ref: args.ref ?? undefined,
+  await args.store.put(args.suite, Buffer.from(lcovText, "utf8"), {
+    sha: args.sha,
+    branch: args.branch,
   });
 
   stdout(
-    `coverage-check store-put: stored suite "${args.suite}" (${lcovFiles.length} file(s)) → ${args.store}`,
+    `coverage-check store-put: stored suite "${args.suite}" (${lcovFiles.length} file(s)) sha=${args.sha} branch=${args.branch}`,
   );
   return 0;
 }

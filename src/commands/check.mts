@@ -4,100 +4,23 @@ import { mergeLcov } from "../lcov-merge.mts";
 import { getChangedLines } from "../diff-parser.mts";
 import { loadRules } from "../rules.mts";
 import { computePatchCoverage } from "../patch-coverage.mts";
-import { collapseRanges, renderFailureComment, renderPassComment } from "../report.mts";
+import { collapseRanges, renderFailureComment } from "../report.mts";
 import { upsertComment } from "../github-comment.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
-import { FileSystemSuiteStore } from "../suite-store.mts";
+import { writeSummary } from "../step-summary.mts";
+import { parseCheckArgs } from "./check-args.mts";
+import type { CheckArgs } from "./check-args.mts";
+import type { SuiteSource } from "../step-summary.mts";
 import type { LcovData } from "../types.mts";
-import type { SuiteStore } from "../suite-store.mts";
-import type { GhRunner } from "../github-comment.mts";
+export type { CheckArgs } from "./check-args.mts";
 
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
 
-export type CheckArgs = {
-  rules: string;
-  artifacts: string;
-  base: string;
-  head: string;
-  pr: number | null;
-  repo: string;
-  json: string | null;
-  stripPrefixes: string[];
-  store: SuiteStore | null;
-  suite: string | null;
-  gh?: GhRunner;
-};
-
-function parseArgs(argv: string[]): CheckArgs {
-  const args: CheckArgs = {
-    rules: ".coverage-rules.yml",
-    artifacts: "./coverage-artifacts",
-    base: "origin/main",
-    head: "HEAD",
-    pr: null,
-    repo: process.env["GITHUB_REPOSITORY"] ?? "",
-    json: null,
-    stripPrefixes: [],
-    store: null,
-    suite: null,
-  };
-
-  for (let i = 0; i < argv.length; i++) {
-    const flag = argv[i]!;
-    const next = argv[i + 1];
-    const val = (): string => {
-      if (next === undefined) throw new Error(`${flag} requires a value`);
-      i++;
-      return next;
-    };
-    switch (flag) {
-      case "--rules":
-        args.rules = val();
-        break;
-      case "--artifacts":
-        args.artifacts = val();
-        break;
-      case "--base":
-        args.base = val();
-        break;
-      case "--head":
-        args.head = val();
-        break;
-      case "--pr": {
-        const raw = val();
-        if (!/^\d+$/.test(raw) || raw === "0")
-          throw new Error(`--pr must be a positive integer, got: ${JSON.stringify(raw)}`);
-        args.pr = parseInt(raw, 10);
-        break;
-      }
-      case "--repo":
-        args.repo = val();
-        break;
-      case "--json":
-        args.json = val();
-        break;
-      case "--strip-prefix":
-        args.stripPrefixes.push(val());
-        break;
-      case "--store":
-        args.store = new FileSystemSuiteStore(val());
-        break;
-      case "--suite":
-        args.suite = val();
-        break;
-      default:
-        throw new Error(`unknown flag: ${flag}`);
-    }
-  }
-
-  return args;
-}
-
 export async function main(argv: string[]): Promise<number> {
-  let args: CheckArgs;
+  let args;
   try {
-    args = parseArgs(argv);
+    args = parseCheckArgs(argv);
   } catch (err) {
     /* c8 ignore next */
     stderr(`coverage-check: ${err instanceof Error ? err.message : err}`);
@@ -115,25 +38,37 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     return 2;
   }
 
+  const branch = args.branch ?? "main";
   const stripPrefixes = buildStripPrefixes(args.stripPrefixes);
   const reports: LcovData[] = [];
+  const suiteSources: SuiteSource[] = [];
 
-  // Merge in suites from the store (skip the current suite — fresh artifacts take precedence)
   if (args.store !== null) {
     const suites = await args.store.list();
     for (const suite of suites) {
       if (suite === args.suite) continue;
-      const buf = await args.store.get(suite);
+      const buf = await args.store.get(suite, { branch });
       if (buf !== null) {
-        reports.push(parseLcov(buf.toString("utf8"), stripPrefixes));
+        const lcov = parseLcov(buf.toString("utf8"), stripPrefixes);
+        reports.push(lcov);
+        suiteSources.push({ suite, source: "store", lcov });
       }
     }
   }
 
-  // Add current run's lcov files
   const lcovFiles = collectLcovFiles(args.artifacts);
+  const freshLcovs: LcovData[] = [];
   for (const f of lcovFiles) {
-    reports.push(parseLcov(readFileSync(f, "utf8"), stripPrefixes));
+    const lcov = parseLcov(readFileSync(f, "utf8"), stripPrefixes);
+    reports.push(lcov);
+    freshLcovs.push(lcov);
+  }
+  if (freshLcovs.length > 0) {
+    suiteSources.push({
+      suite: args.suite ?? "(current)",
+      source: "fresh",
+      lcov: mergeLcov(freshLcovs),
+    });
   }
 
   if (reports.length === 0) {
@@ -187,8 +122,13 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     }
   }
 
+  const summaryFile = args.summaryFile ?? process.env["GITHUB_STEP_SUMMARY"] ?? null;
+  if (summaryFile) {
+    writeSummary(summaryFile, suiteSources, result, runUrl);
+  }
+
   if (args.pr !== null && args.repo) {
-    const body = passed ? renderPassComment(runUrl) : renderFailureComment(result, runUrl);
+    const body = passed ? "" : renderFailureComment(result, runUrl);
     try {
       await upsertComment(body, args.repo, args.pr, passed, args.gh);
     } catch (err) {

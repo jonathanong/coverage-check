@@ -96,6 +96,32 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("accepts --branch flag", async () => {
+    expect(
+      await main([
+        "--rules",
+        join(tmpDir, "nonexistent.yml"),
+        "--branch",
+        "main",
+        "--artifacts",
+        artifactsDir,
+      ]),
+    ).toBe(2);
+  });
+
+  it("accepts --store-s3 flag (parse succeeds, fails on missing rules)", async () => {
+    expect(
+      await main([
+        "--rules",
+        join(tmpDir, "nonexistent.yml"),
+        "--artifacts",
+        artifactsDir,
+        "--store-s3",
+        "my-bucket/prefix",
+      ]),
+    ).toBe(2);
+  });
+
   it("returns 0 when no coverage data found — skips git entirely", async () => {
     expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir])).toBe(0);
   });
@@ -160,7 +186,6 @@ describe("runCheck with suite store", () => {
     writeFileSync(rulesPath, "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n");
     store = new FileSystemSuiteStore(storeDir);
 
-    // Set up a minimal git repo so HEAD is valid for diff tests
     const repoDir = join(tmpDir, "repo");
     mkdirSync(join(repoDir, "backend"), { recursive: true });
 
@@ -219,7 +244,10 @@ describe("runCheck with suite store", () => {
   });
 
   it("returns 0 when store has suites but diff is empty (base=head)", async () => {
-    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"));
+    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
     expect(
       await runCheck({
         rules: rulesPath,
@@ -237,15 +265,18 @@ describe("runCheck with suite store", () => {
   });
 
   it("excludes the current suite from the store during check", async () => {
-    // Store has "backend" suite with coverage; current artifacts is empty
-    // With --suite=backend, the stored backend coverage should be excluded
-    await store.put("backend", Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n"));
-    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"));
-
+    await store.put("backend", Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
+    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
     expect(
       await runCheck({
         rules: rulesPath,
-        artifacts: artifactsDir, // empty
+        artifacts: artifactsDir,
         base: "HEAD",
         head: "HEAD",
         pr: null,
@@ -253,16 +284,17 @@ describe("runCheck with suite store", () => {
         json: null,
         stripPrefixes: [],
         store,
-        suite: "backend", // excludes the stored backend suite
+        suite: "backend",
       }),
     ).toBe(0);
   });
 
   it("includes non-current suites from the store", async () => {
-    // Put a "frontend" suite in the store; artifacts has backend coverage
-    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"));
+    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
     writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
-    // With suite=backend, frontend from store should still be merged
     expect(
       await runCheck({
         rules: rulesPath,
@@ -280,17 +312,19 @@ describe("runCheck with suite store", () => {
   });
 
   it("handles a store that returns null from get() gracefully", async () => {
-    // Custom store: list returns a suite, but get returns null (e.g. file was deleted)
     const nullStore = {
       async list() {
         return ["backend"];
       },
-      async get(_suite: string) {
+      async get(_suite: string, _opts?: { sha?: string; branch?: string }) {
         return null;
       },
-      async put() {},
+      async put(
+        _suite: string,
+        _lcov: Buffer,
+        _meta: { sha: string; branch: string },
+      ): Promise<void> {},
     };
-    // No local artifacts + store returns null → no reports → return 0
     expect(
       await runCheck({
         rules: rulesPath,
@@ -308,7 +342,10 @@ describe("runCheck with suite store", () => {
   });
 
   it("constructs a real runUrl when GITHUB_SERVER_URL and GITHUB_RUN_ID are set", async () => {
-    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"));
+    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
 
     const calls: string[][] = [];
     const gh = async (args: string[]) => {
@@ -322,7 +359,6 @@ describe("runCheck with suite store", () => {
     process.env["GITHUB_RUN_ID"] = "12345";
 
     try {
-      // With frontend from store and empty diff (HEAD=HEAD), passes
       await runCheck({
         rules: rulesPath,
         artifacts: artifactsDir,
@@ -336,7 +372,6 @@ describe("runCheck with suite store", () => {
         suite: null,
         gh,
       });
-      // gh was called (lookup for existing comment)
       expect(calls.length).toBeGreaterThanOrEqual(1);
     } finally {
       if (origServer === undefined) delete process.env["GITHUB_SERVER_URL"];
@@ -347,7 +382,6 @@ describe("runCheck with suite store", () => {
   });
 
   it("accepts --store and --suite flags via main()", async () => {
-    // --store and --suite valid flags, no lcov → returns 0
     expect(
       await main([
         "--rules",
@@ -355,6 +389,21 @@ describe("runCheck with suite store", () => {
         "--artifacts",
         artifactsDir,
         "--store",
+        storeDir,
+        "--suite",
+        "backend",
+      ]),
+    ).toBe(0);
+  });
+
+  it("accepts --store-fs flag as alias for --store", async () => {
+    expect(
+      await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--store-fs",
         storeDir,
         "--suite",
         "backend",
@@ -527,7 +576,6 @@ describe("with a real git repo and a known diff", () => {
       gh,
     });
     expect(result).toBe(1);
-    // gh was called: first to look up existing comment, then to post
     expect(calls.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -580,7 +628,6 @@ describe("with a real git repo and a known diff", () => {
       suite: null,
       gh,
     });
-    // Still returns 1 even though gh call failed
     expect(result).toBe(1);
   });
 
@@ -615,10 +662,11 @@ describe("with a real git repo and a known diff", () => {
     mkdirSync(storeDir);
     const store = new FileSystemSuiteStore(storeDir);
 
-    // Store has frontend coverage (unrelated to the diff)
-    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"));
+    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
 
-    // Current artifacts has backend coverage (line 2 now covered)
     writeFileSync(
       join(artifactsDir, "lcov.info"),
       "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
@@ -638,5 +686,29 @@ describe("with a real git repo and a known diff", () => {
         suite: "backend",
       }),
     ).toBe(0);
+  });
+
+  it("writes step summary when summaryFile is provided", async () => {
+    const summaryFile = join(tmpDir, "summary.md");
+    writeFileSync(summaryFile, "");
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    await runCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: "backend",
+      summaryFile,
+    });
+    const content = readFileSync(summaryFile, "utf8");
+    expect(content).toContain("Coverage summary");
   });
 });

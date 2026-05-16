@@ -28,8 +28,14 @@ describe("FileSystemSuiteStore", () => {
     });
 
     it("returns suite names after putting suites", async () => {
-      await store.put("backend", Buffer.from("SF:foo\nend_of_record\n"));
-      await store.put("frontend", Buffer.from("SF:bar\nend_of_record\n"));
+      await store.put("backend", Buffer.from("SF:foo\nend_of_record\n"), {
+        sha: "abc",
+        branch: "main",
+      });
+      await store.put("frontend", Buffer.from("SF:bar\nend_of_record\n"), {
+        sha: "def",
+        branch: "main",
+      });
       const suites = await store.list();
       expect(suites).toContain("backend");
       expect(suites).toContain("frontend");
@@ -37,8 +43,10 @@ describe("FileSystemSuiteStore", () => {
     });
 
     it("ignores non-directory entries in the root", async () => {
-      await store.put("backend", Buffer.from("SF:foo\nend_of_record\n"));
-      // The lcov.info inside backend dir should not appear as a suite
+      await store.put("backend", Buffer.from("SF:foo\nend_of_record\n"), {
+        sha: "abc",
+        branch: "main",
+      });
       const suites = await store.list();
       expect(suites).not.toContain("lcov.info");
       expect(suites).not.toContain("meta.json");
@@ -51,65 +59,114 @@ describe("FileSystemSuiteStore", () => {
   });
 
   describe("get()", () => {
-    it("returns null for a missing suite", async () => {
+    it("returns null for a missing suite (no pointer file)", async () => {
       expect(await store.get("nonexistent")).toBeNull();
     });
 
-    it("returns the LCOV buffer after put()", async () => {
+    it("returns null when get() is called with explicit sha that has no lcov file", async () => {
+      // Pointer exists (from a different sha), but requested sha is absent
+      await store.put("backend", Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n"), {
+        sha: "abc",
+        branch: "main",
+      });
+      expect(await store.get("backend", { sha: "nonexistent-sha" })).toBeNull();
+    });
+
+    it("returns the LCOV buffer after put() via branch pointer", async () => {
       const lcov = Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
-      await store.put("backend", lcov);
+      await store.put("backend", lcov, { sha: "abc123", branch: "main" });
       const result = await store.get("backend");
       expect(result).not.toBeNull();
       expect(result!.toString()).toBe(lcov.toString());
     });
 
-    it("rethrows non-ENOENT errors from readFileSync", async () => {
+    it("returns the LCOV buffer when get() is called with explicit sha", async () => {
+      const lcov = Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
+      await store.put("backend", lcov, { sha: "abc123", branch: "main" });
+      const result = await store.get("backend", { sha: "abc123" });
+      expect(result).not.toBeNull();
+      expect(result!.toString()).toBe(lcov.toString());
+    });
+
+    it("resolves the correct sha via the branch pointer", async () => {
+      const lcovV1 = Buffer.from("SF:backend/v1.mts\nDA:1,1\nend_of_record\n");
+      const lcovV2 = Buffer.from("SF:backend/v2.mts\nDA:2,1\nend_of_record\n");
+      await store.put("backend", lcovV1, { sha: "sha1", branch: "main" });
+      await store.put("backend", lcovV2, { sha: "sha2", branch: "main" });
+      // Branch pointer now points to sha2; sha1 still exists on disk
+      const result = await store.get("backend", { branch: "main" });
+      expect(result!.toString()).toBe(lcovV2.toString());
+    });
+
+    it("rethrows non-ENOENT errors from pointer readFileSync", async () => {
       const badStore = new FileSystemSuiteStore("\0invalid");
       await expect(badStore.get("suite")).rejects.toThrow();
+    });
+
+    it("rethrows non-ENOENT errors from lcov readFileSync when sha is explicit", async () => {
+      const badStore = new FileSystemSuiteStore("\0invalid");
+      await expect(badStore.get("suite", { sha: "abc" })).rejects.toThrow();
     });
   });
 
   describe("put()", () => {
-    it("writes lcov.info and meta.json", async () => {
+    it("writes lcov.info under sha/ and latest.json under branch/", async () => {
       const lcov = Buffer.from("SF:foo.mts\nDA:1,5\nend_of_record\n");
-      await store.put("backend", lcov, { sha: "abc123", ref: "refs/heads/main" });
+      await store.put("backend", lcov, { sha: "abc123", branch: "main" });
 
-      const lcovPath = join(tmpDir, "backend", "lcov.info");
-      const metaPath = join(tmpDir, "backend", "meta.json");
+      const lcovPath = join(tmpDir, "backend", "sha", "abc123", "lcov.info");
+      const pointerPath = join(tmpDir, "backend", "branch", "main", "latest.json");
       expect(readFileSync(lcovPath).toString()).toBe(lcov.toString());
 
-      const meta = JSON.parse(readFileSync(metaPath, "utf8"));
-      expect(meta.sha).toBe("abc123");
-      expect(meta.ref).toBe("refs/heads/main");
-      expect(typeof meta.timestamp).toBe("string");
+      const pointer = JSON.parse(readFileSync(pointerPath, "utf8"));
+      expect(pointer.sha).toBe("abc123");
+      expect(typeof pointer.timestamp).toBe("string");
     });
 
-    it("uses the provided timestamp in meta.json", async () => {
-      await store.put("backend", Buffer.from(""), { timestamp: "2026-01-01T00:00:00.000Z" });
-      const meta = JSON.parse(readFileSync(join(tmpDir, "backend", "meta.json"), "utf8"));
-      expect(meta.timestamp).toBe("2026-01-01T00:00:00.000Z");
+    it("uses the provided timestamp", async () => {
+      await store.put("backend", Buffer.from(""), {
+        sha: "abc",
+        branch: "main",
+        timestamp: "2026-01-01T00:00:00.000Z",
+      });
+      const pointer = JSON.parse(
+        readFileSync(join(tmpDir, "backend", "branch", "main", "latest.json"), "utf8"),
+      );
+      expect(pointer.timestamp).toBe("2026-01-01T00:00:00.000Z");
     });
 
     it("creates a default timestamp when none is provided", async () => {
       const before = new Date().toISOString();
-      await store.put("backend", Buffer.from(""));
-      const meta = JSON.parse(readFileSync(join(tmpDir, "backend", "meta.json"), "utf8"));
+      await store.put("backend", Buffer.from(""), { sha: "abc", branch: "main" });
       const after = new Date().toISOString();
-      expect(meta.timestamp >= before).toBe(true);
-      expect(meta.timestamp <= after).toBe(true);
+      const pointer = JSON.parse(
+        readFileSync(join(tmpDir, "backend", "branch", "main", "latest.json"), "utf8"),
+      );
+      expect(pointer.timestamp >= before).toBe(true);
+      expect(pointer.timestamp <= after).toBe(true);
     });
 
     it("creates parent directories recursively", async () => {
       const nested = new FileSystemSuiteStore(join(tmpDir, "deep", "nested", "store"));
-      await nested.put("backend", Buffer.from("SF:foo\nend_of_record\n"));
+      await nested.put("backend", Buffer.from("SF:foo\nend_of_record\n"), {
+        sha: "abc",
+        branch: "main",
+      });
       expect(await nested.list()).toContain("backend");
     });
 
-    it("overwrites an existing suite", async () => {
-      await store.put("backend", Buffer.from("v1"));
-      await store.put("backend", Buffer.from("v2"));
-      const result = await store.get("backend");
+    it("overwrites an existing suite when same sha is used", async () => {
+      await store.put("backend", Buffer.from("v1"), { sha: "abc", branch: "main" });
+      await store.put("backend", Buffer.from("v2"), { sha: "abc", branch: "main" });
+      const result = await store.get("backend", { sha: "abc" });
       expect(result!.toString()).toBe("v2");
+    });
+
+    it("keeps multiple sha entries independently", async () => {
+      await store.put("backend", Buffer.from("v1"), { sha: "sha1", branch: "main" });
+      await store.put("backend", Buffer.from("v2"), { sha: "sha2", branch: "main" });
+      expect((await store.get("backend", { sha: "sha1" }))!.toString()).toBe("v1");
+      expect((await store.get("backend", { sha: "sha2" }))!.toString()).toBe("v2");
     });
   });
 });
