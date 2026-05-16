@@ -152,7 +152,7 @@ import { runCheck, runStorePut, FileSystemSuiteStore, S3SuiteStore } from "cover
 // FileSystem store
 const fsStore = new FileSystemSuiteStore("/path/to/store");
 
-// S3 store (requires @aws-sdk/client-s3)
+// S3 store (requires AWS credentials — see https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/setting-credentials-node.html)
 const s3Store = new S3SuiteStore({ bucket: "my-bucket", prefix: "coverage" });
 
 await runCheck({

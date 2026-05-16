@@ -169,4 +169,34 @@ describe("FileSystemSuiteStore", () => {
       expect((await store.get("backend", { sha: "sha2" }))!.toString()).toBe("v2");
     });
   });
+
+  describe("path traversal protection", () => {
+    const invalid = ["", ".", "..", "a/b", "a\\b"];
+    for (const val of invalid) {
+      it(`get() rejects suite=${JSON.stringify(val)}`, async () => {
+        await expect(store.get(val)).rejects.toThrow("invalid suite");
+      });
+      it(`get() rejects branch=${JSON.stringify(val)}`, async () => {
+        await expect(store.get("backend", { branch: val })).rejects.toThrow("invalid branch");
+      });
+      it(`get() rejects sha=${JSON.stringify(val)}`, async () => {
+        await expect(store.get("backend", { sha: val })).rejects.toThrow("invalid sha");
+      });
+      it(`put() rejects suite=${JSON.stringify(val)}`, async () => {
+        await expect(
+          store.put(val, Buffer.from(""), { sha: "abc", branch: "main" }),
+        ).rejects.toThrow("invalid suite");
+      });
+      it(`put() rejects sha=${JSON.stringify(val)}`, async () => {
+        await expect(
+          store.put("backend", Buffer.from(""), { sha: val, branch: "main" }),
+        ).rejects.toThrow("invalid sha");
+      });
+      it(`put() rejects branch=${JSON.stringify(val)}`, async () => {
+        await expect(
+          store.put("backend", Buffer.from(""), { sha: "abc", branch: val }),
+        ).rejects.toThrow("invalid branch");
+      });
+    }
+  });
 });

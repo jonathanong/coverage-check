@@ -3,7 +3,9 @@ comment: false
 ignore:
   - "bin/**"
   - "src/**/*.test.mts"
+  # types.mts contains only TypeScript type definitions — zero executable code
   - "src/types.mts"
+  # coverage-check.mts is a barrel re-export — zero executable code
   - "src/coverage-check.mts"
 
 coverage:

@@ -2,6 +2,12 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SuiteMeta } from "./types.mts";
 
+function assertSafePathComponent(value: string, label: string): void {
+  if (!value || value === "." || value === ".." || value.includes("/") || value.includes("\\")) {
+    throw new Error(`invalid ${label}: ${JSON.stringify(value)}`);
+  }
+}
+
 export type { SuiteMeta };
 
 export interface SuiteStore {
@@ -48,9 +54,12 @@ export class FileSystemSuiteStore implements SuiteStore {
   }
 
   async get(suite: string, opts?: { sha?: string; branch?: string }): Promise<Buffer | null> {
+    assertSafePathComponent(suite, "suite");
+    if (opts?.sha !== undefined) assertSafePathComponent(opts.sha, "sha");
     let sha = opts?.sha;
     if (!sha) {
       const branch = opts?.branch ?? "main";
+      assertSafePathComponent(branch, "branch");
       const pointerPath = join(this.root, suite, "branch", branch, "latest.json");
       try {
         const pointer = JSON.parse(readFileSync(pointerPath, "utf8")) as { sha: string };
@@ -74,6 +83,9 @@ export class FileSystemSuiteStore implements SuiteStore {
     lcov: Buffer,
     meta: SuiteMeta & { sha: string; branch: string },
   ): Promise<void> {
+    assertSafePathComponent(suite, "suite");
+    assertSafePathComponent(meta.sha, "sha");
+    assertSafePathComponent(meta.branch, "branch");
     const shaDir = join(this.root, suite, "sha", meta.sha);
     mkdirSync(shaDir, { recursive: true });
     writeFileSync(join(shaDir, "lcov.info"), lcov);
