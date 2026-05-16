@@ -14,10 +14,10 @@ export function parseS3Spec(spec: string): { bucket: string; prefix?: string } {
 
 /** Build a SuiteStore from CLI flag values. Returns null if neither is set. */
 export function makeStore(opts: { fs?: string | null; s3?: string | null }): SuiteStore | null {
-  if (opts.s3) {
+  if (opts.s3 != null) {
     const { bucket, prefix } = parseS3Spec(opts.s3);
     return new S3SuiteStore({ bucket, prefix });
   }
-  if (opts.fs) return new FileSystemSuiteStore(opts.fs);
+  if (opts.fs != null) return new FileSystemSuiteStore(opts.fs);
   return null;
 }

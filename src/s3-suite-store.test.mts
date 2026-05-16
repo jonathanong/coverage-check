@@ -296,3 +296,13 @@ describe("S3SuiteStore — path traversal protection", () => {
     });
   }
 });
+
+describe("S3SuiteStore — constructor prefix normalization", () => {
+  it("strips all trailing slashes from prefix", async () => {
+    const client = makeClient(async () => ({ CommonPrefixes: [] }));
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: "coverage///", client });
+    expect(await store.list()).toEqual([]);
+    const cmd = client.send.mock.calls[0][0] as InstanceType<typeof ListObjectsV2Command>;
+    expect(cmd.input.Prefix).toBe("coverage/");
+  });
+});

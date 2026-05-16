@@ -25,6 +25,10 @@ function pctStr(hit: number, total: number): string {
   return `${((hit / total) * 100).toFixed(1)}% (${hit}/${total})`;
 }
 
+function escMd(s: string): string {
+  return s.replace(/\|/g, "\\|");
+}
+
 export function buildSummaryMarkdown(
   suiteSources: SuiteSource[],
   result: CoverageCheckResult,
@@ -34,8 +38,8 @@ export function buildSummaryMarkdown(
   const suiteRows = suiteSources
     .map(({ suite, source, lcov }) => {
       const { hit, total } = suiteTotals(lcov);
-      const sourceLabel = source === "fresh" ? "fresh" : `store (${branch})`;
-      return `| \`${suite}\` | ${sourceLabel} | ${pctStr(hit, total)} |`;
+      const sourceLabel = source === "fresh" ? "fresh" : `store (${escMd(branch)})`;
+      return `| \`${escMd(suite)}\` | ${sourceLabel} | ${pctStr(hit, total)} |`;
     })
     .join("\n");
 
@@ -49,7 +53,7 @@ export function buildSummaryMarkdown(
     .map((b) => {
       const status = b.passed ? "✅" : "❌";
       const pct = b.coverable > 0 ? `${((b.hit / b.coverable) * 100).toFixed(1)}%` : "—";
-      return `| \`${b.rule}\` | ${b.threshold}% | ${pct} | ${status} |`;
+      return `| \`${escMd(b.rule)}\` | ${b.threshold}% | ${pct} | ${status} |`;
     })
     .join("\n");
 

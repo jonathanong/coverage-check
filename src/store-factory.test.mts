@@ -60,4 +60,8 @@ describe("makeStore", () => {
   it("prefers s3 over fs when both are provided", () => {
     expect(makeStore({ fs: "/tmp/store", s3: "my-bucket" })).toBeInstanceOf(S3SuiteStore);
   });
+
+  it("throws when s3 spec is an empty string (not silently treated as absent)", () => {
+    expect(() => makeStore({ s3: "" })).toThrow("bucket must not be empty");
+  });
 });

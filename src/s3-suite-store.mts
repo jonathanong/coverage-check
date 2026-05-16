@@ -26,7 +26,7 @@ export class S3SuiteStore implements SuiteStore {
 
   constructor({ bucket, prefix, region, client }: S3SuiteStoreOptions) {
     this.bucket = bucket;
-    this.prefix = prefix ? prefix.replace(/\/$/, "") : "";
+    this.prefix = prefix ? prefix.replace(/\/+$/, "") : "";
     this.client = client ?? new S3Client({ region });
   }
 
