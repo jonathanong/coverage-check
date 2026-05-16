@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist",
+    "declaration": false
+  },
+  "include": ["src/**/*.mts", "bin/**/*.mts"],
+  "exclude": ["node_modules"]
+}

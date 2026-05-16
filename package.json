@@ -6,11 +6,10 @@
   "author": "Jonathan Ong",
   "type": "module",
   "bin": {
-    "coverage-check": "./bin/coverage-check.mts"
+    "coverage-check": "./dist/bin/coverage-check.mjs"
   },
   "files": [
-    "bin/**",
-    "src/**",
+    "dist/**",
     "README.md",
     "LICENSE"
   ],
@@ -33,7 +32,8 @@
   },
   "scripts": {
     "prepare": "husky",
-    "prepublishOnly": "npm run typecheck && npm test",
+    "build": "tsc --project tsconfig.build.json",
+    "prepublishOnly": "npm run build && npm run typecheck && npm test",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src/ bin/",
     "format": "oxfmt src/ bin/ README.md",
