@@ -76,7 +76,9 @@ export class S3SuiteStore implements SuiteStore {
           }),
         )) as { Body: unknown };
         const body = await bodyToBuffer(resp.Body);
-        sha = (JSON.parse(body.toString("utf8")) as { sha: string }).sha;
+        const parsed = (JSON.parse(body.toString("utf8")) as { sha: string }).sha;
+        assertSafePathComponent(parsed, "sha");
+        sha = parsed;
       } catch (err) {
         if (isNotFound(err)) return null;
         throw err;

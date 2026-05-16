@@ -113,21 +113,21 @@ Rules are matched in order; the first match wins. Files in the diff not matched 
 
 ### `coverage-check check`
 
-| Flag             | Default                        | Description                                                                  |
-| ---------------- | ------------------------------ | ---------------------------------------------------------------------------- |
-| `--rules`        | `.coverage-rules.yml`          | Path to YAML rules file                                                      |
-| `--artifacts`    | `./coverage-artifacts`         | Directory to scan for `lcov.info` files                                      |
-| `--base`         | `origin/main`                  | Base git ref for `git diff`                                                  |
-| `--head`         | `HEAD`                         | Head git ref for `git diff`                                                  |
-| `--store-fs`     | —                              | Path to a filesystem suite store directory                                   |
-| `--store`        | —                              | Alias for `--store-fs`                                                       |
-| `--store-s3`     | —                              | S3 suite store spec: `<bucket>[/<prefix>]`                                   |
-| `--branch`       | `$GITHUB_REF_NAME` or `"main"` | Branch pointer to follow when reading from the store                         |
-| `--suite`        | —                              | Name of the current suite (fresh artifacts override this suite in the store) |
-| `--strip-prefix` | —                              | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                |
-| `--pr`           | —                              | Pull request number for sticky comment                                       |
-| `--repo`         | `$GITHUB_REPOSITORY`           | `owner/repo` for sticky comment                                              |
-| `--json`         | —                              | Write JSON result to this path                                               |
+| Flag             | Default                | Description                                                                                  |
+| ---------------- | ---------------------- | -------------------------------------------------------------------------------------------- |
+| `--rules`        | `.coverage-rules.yml`  | Path to YAML rules file                                                                      |
+| `--artifacts`    | `./coverage-artifacts` | Directory to scan for `lcov.info` files                                                      |
+| `--base`         | `origin/main`          | Base git ref for `git diff`                                                                  |
+| `--head`         | `HEAD`                 | Head git ref for `git diff`                                                                  |
+| `--store-fs`     | —                      | Path to a filesystem suite store directory                                                   |
+| `--store`        | —                      | Alias for `--store-fs`                                                                       |
+| `--store-s3`     | —                      | S3 suite store spec: `<bucket>[/<prefix>]`                                                   |
+| `--branch`       | `"main"`               | Branch pointer to follow when reading from the store (no `/` or `\\`)                        |
+| `--suite`        | —                      | Name of the current suite (no `/` or `\\`); fresh artifacts override this suite in the store |
+| `--strip-prefix` | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                                |
+| `--pr`           | —                      | Pull request number for sticky comment                                                       |
+| `--repo`         | `$GITHUB_REPOSITORY`   | `owner/repo` for sticky comment                                                              |
+| `--json`         | —                      | Write JSON result to this path                                                               |
 
 ### `coverage-check store-put`
 

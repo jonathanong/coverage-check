@@ -803,6 +803,29 @@ describe("with a real git repo and a known diff", () => {
     }
   });
 
+  it("returns 2 when writeSummary throws (unwritable summaryFile path)", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    // Pass the tmp directory itself as summaryFile — appendFileSync on a dir throws EISDIR
+    expect(
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: "backend",
+        summaryFile: tmpDir,
+      }),
+    ).toBe(2);
+  });
+
   it("does not write summary when summaryFile is undefined and GITHUB_STEP_SUMMARY is unset", async () => {
     writeFileSync(
       join(artifactsDir, "lcov.info"),

@@ -1,4 +1,5 @@
 import { makeStore } from "../store-factory.mts";
+import { assertSafePathComponent } from "../suite-store.mts";
 import type { SuiteStore } from "../suite-store.mts";
 import type { GhRunner } from "../github-comment.mts";
 
@@ -65,15 +66,21 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
       case "--json":
         args.json = val();
         break;
-      case "--suite":
-        args.suite = val();
+      case "--suite": {
+        const s = val();
+        assertSafePathComponent(s, "suite");
+        args.suite = s;
         break;
+      }
       case "--strip-prefix":
         args.stripPrefixes.push(val());
         break;
-      case "--branch":
-        args.branch = val();
+      case "--branch": {
+        const b = val();
+        assertSafePathComponent(b, "branch");
+        args.branch = b;
         break;
+      }
       case "--store":
       case "--store-fs":
         storeFs = val();

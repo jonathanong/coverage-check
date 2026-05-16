@@ -3,6 +3,7 @@ import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov, toLcov } from "../lcov-merge.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { makeStore } from "../store-factory.mts";
+import { assertSafePathComponent } from "../suite-store.mts";
 import type { SuiteStore } from "../suite-store.mts";
 
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
@@ -69,6 +70,9 @@ function parseArgs(argv: string[]): StorePutArgs {
   if (!storeFs && !storeS3) throw new Error("--store-fs/--store or --store-s3 is required");
   if (!args.sha) throw new Error("--sha is required");
   if (!args.branch) throw new Error("--branch is required");
+  assertSafePathComponent(args.suite, "suite");
+  assertSafePathComponent(args.sha, "sha");
+  assertSafePathComponent(args.branch, "branch");
 
   const store = makeStore({ fs: storeFs, s3: storeS3 })!;
   return { ...args, store };

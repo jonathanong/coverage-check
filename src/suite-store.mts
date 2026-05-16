@@ -63,6 +63,7 @@ export class FileSystemSuiteStore implements SuiteStore {
       const pointerPath = join(this.root, suite, "branch", branch, "latest.json");
       try {
         const pointer = JSON.parse(readFileSync(pointerPath, "utf8")) as { sha: string };
+        assertSafePathComponent(pointer.sha, "sha");
         sha = pointer.sha;
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;

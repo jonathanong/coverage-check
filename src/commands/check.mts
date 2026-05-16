@@ -122,7 +122,12 @@ export async function runCheck(args: CheckArgs): Promise<number> {
       ? args.summaryFile
       : (process.env["GITHUB_STEP_SUMMARY"] ?? null);
   if (summaryFile) {
-    writeSummary(summaryFile, suiteSources, result, runUrl, branch);
+    try {
+      writeSummary(summaryFile, suiteSources, result, runUrl, branch);
+    } catch (err) {
+      stderr(`coverage-check: failed to write step summary: ${err}`);
+      return 2;
+    }
   }
 
   if (args.pr !== null && args.repo) {
