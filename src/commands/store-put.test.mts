@@ -1,0 +1,154 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { main, runStorePut } from "./store-put.mts";
+import { FileSystemSuiteStore } from "../suite-store.mts";
+
+describe("main argument parsing", () => {
+  it("returns 2 when --suite is missing", async () => {
+    expect(await main(["--store", "/tmp/store"])).toBe(2);
+  });
+
+  it("returns 2 when --store is missing", async () => {
+    expect(await main(["--suite", "backend"])).toBe(2);
+  });
+
+  it("returns 2 on unknown flag", async () => {
+    expect(await main(["--suite", "backend", "--store", "/tmp/s", "--unknown"])).toBe(2);
+  });
+
+  it("returns 2 when a flag is missing its value", async () => {
+    expect(await main(["--suite"])).toBe(2);
+  });
+});
+
+describe("runStorePut", () => {
+  let tmpDir: string;
+  let artifactsDir: string;
+  let storeDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "store-put-test-"));
+    artifactsDir = join(tmpDir, "artifacts");
+    storeDir = join(tmpDir, "store");
+    mkdirSync(artifactsDir);
+    mkdirSync(storeDir);
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns 2 when no lcov.info files found in artifacts", async () => {
+    expect(
+      await runStorePut({
+        suite: "backend",
+        store: storeDir,
+        artifacts: artifactsDir,
+        stripPrefixes: [],
+        sha: null,
+        ref: null,
+      }),
+    ).toBe(2);
+  });
+
+  it("stores merged lcov from artifacts and returns 0", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+
+    expect(
+      await runStorePut({
+        suite: "backend",
+        store: storeDir,
+        artifacts: artifactsDir,
+        stripPrefixes: [],
+        sha: "abc123",
+        ref: "refs/heads/main",
+      }),
+    ).toBe(0);
+
+    const store = new FileSystemSuiteStore(storeDir);
+    const suites = await store.list();
+    expect(suites).toContain("backend");
+
+    const buf = await store.get("backend");
+    expect(buf).not.toBeNull();
+    const lcovText = buf!.toString();
+    expect(lcovText).toContain("SF:backend/foo.mts");
+    expect(lcovText).toContain("DA:1,1");
+  });
+
+  it("merges multiple lcov files from nested subdirectories", async () => {
+    const sub = join(artifactsDir, "shard1");
+    mkdirSync(sub);
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/a.mts\nDA:1,1\nend_of_record\n");
+    writeFileSync(join(sub, "lcov.info"), "SF:backend/b.mts\nDA:2,1\nend_of_record\n");
+
+    expect(
+      await runStorePut({
+        suite: "backend",
+        store: storeDir,
+        artifacts: artifactsDir,
+        stripPrefixes: [],
+        sha: null,
+        ref: null,
+      }),
+    ).toBe(0);
+
+    const store = new FileSystemSuiteStore(storeDir);
+    const buf = await store.get("backend");
+    const lcovText = buf!.toString();
+    expect(lcovText).toContain("SF:backend/a.mts");
+    expect(lcovText).toContain("SF:backend/b.mts");
+  });
+
+  it("accepts --strip-prefix flag", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:/home/runner/work/repo/backend/foo.mts\nDA:1,1\nend_of_record\n",
+    );
+
+    expect(
+      await main([
+        "--suite",
+        "backend",
+        "--store",
+        storeDir,
+        "--artifacts",
+        artifactsDir,
+        "--strip-prefix",
+        "/home/runner/work/repo",
+      ]),
+    ).toBe(0);
+
+    const store = new FileSystemSuiteStore(storeDir);
+    const buf = await store.get("backend");
+    // After stripping the prefix, the stored lcov should have the normalized path
+    expect(buf!.toString()).toContain("SF:backend/foo.mts");
+  });
+
+  it("round-trips through main() CLI interface", async () => {
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:web/app.tsx\nDA:10,1\nend_of_record\n");
+
+    expect(
+      await main([
+        "--suite",
+        "frontend",
+        "--store",
+        storeDir,
+        "--artifacts",
+        artifactsDir,
+        "--sha",
+        "deadbeef",
+        "--ref",
+        "refs/heads/feat",
+      ]),
+    ).toBe(0);
+
+    const stored = readFileSync(join(storeDir, "frontend", "lcov.info"), "utf8");
+    expect(stored).toContain("SF:web/app.tsx");
+  });
+});

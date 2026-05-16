@@ -1,0 +1,3 @@
+oxfmt --check src/ bin/ README.md
+oxlint src/ bin/
+tsc --noEmit

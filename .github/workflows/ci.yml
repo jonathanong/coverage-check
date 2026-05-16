@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    name: lint / typecheck / test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['22.x', '24.x']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - id: token-check
+        run: echo "has_codecov=${{ secrets.CODECOV_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - name: Upload test results to Codecov
+        if: ${{ always() && !cancelled() && steps.token-check.outputs.has_codecov == 'true' }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload coverage to Codecov
+        if: ${{ always() && !cancelled() && steps.token-check.outputs.has_codecov == 'true' }}
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
+  "rules": {
+    "unicorn/prefer-node-protocol": "error",
+    "radix": "error",
+    "max-lines": ["error", 200]
+  },
+  "overrides": [
+    {
+      "files": ["*.test.mts"],
+      "rules": {
+        "max-lines": "off",
+        "no-unused-vars": "off"
+      }
+    }
+  ]
+}

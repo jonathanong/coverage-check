@@ -1,0 +1,59 @@
+{
+  "name": "coverage-check",
+  "version": "0.1.0",
+  "description": "Patch-coverage gate: checks that newly added lines meet per-path coverage thresholds. Supports per-suite LCOV accumulation for conditional CI.",
+  "license": "MIT",
+  "author": "Jonathan Ong",
+  "type": "module",
+  "bin": {
+    "coverage-check": "./bin/coverage-check.mts"
+  },
+  "files": [
+    "bin/**",
+    "src/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.8.0",
+    "@vitest/coverage-v8": "^4.1.6",
+    "husky": "^9.1.7",
+    "oxfmt": "^0.50.0",
+    "oxlint": "^1.65.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "prepublishOnly": "npm run typecheck && npm test",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src/ bin/",
+    "format": "oxfmt src/ bin/ README.md",
+    "format:check": "oxfmt --check src/ bin/ README.md",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "keywords": [
+    "coverage",
+    "lcov",
+    "patch-coverage",
+    "github",
+    "ci",
+    "test-coverage"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jonathanong/coverage-check.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jonathanong/coverage-check/issues"
+  },
+  "homepage": "https://github.com/jonathanong/coverage-check"
+}
