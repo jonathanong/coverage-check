@@ -76,12 +76,3 @@ ${informationalSection}
 
 _Last updated: ${now} · [Workflow run](${runUrl})_`;
 }
-
-export function renderPassComment(runUrl: string, now: string = new Date().toISOString()): string {
-  return `${COMMENT_MARKER}
-## Patch coverage gate passed
-
-All workspace patch-coverage rules met.
-
-_Last updated: ${now} · [Workflow run](${runUrl})_`;
-}

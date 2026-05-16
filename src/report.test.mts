@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  collapseRanges,
-  renderFailureComment,
-  renderPassComment,
-  COMMENT_MARKER,
-} from "./report.mts";
+import { collapseRanges, renderFailureComment, COMMENT_MARKER } from "./report.mts";
 import type { CoverageCheckResult } from "./types.mts";
 
 describe("collapseRanges", () => {
@@ -143,17 +138,5 @@ describe("renderFailureComment", () => {
     };
     const comment = renderFailureComment(resultNoLines, "N/A", "2026-01-01T00:00:00.000Z");
     expect(comment).toContain("_No line-level data available_");
-  });
-});
-
-describe("renderPassComment", () => {
-  it("includes the marker", () => {
-    const comment = renderPassComment("https://example.com/run/1", "2026-01-01T00:00:00.000Z");
-    expect(comment.startsWith(COMMENT_MARKER)).toBe(true);
-  });
-
-  it("says passed", () => {
-    const comment = renderPassComment("https://example.com/run/1", "2026-01-01T00:00:00.000Z");
-    expect(comment).toContain("passed");
   });
 });

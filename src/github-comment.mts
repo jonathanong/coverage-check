@@ -45,8 +45,8 @@ async function findExistingComment(repo: string, pr: number, gh: GhRunner): Prom
  * Posts or updates the sticky coverage-check comment on a pull request.
  *
  * - On failure: upserts the failure comment body (POST if absent, PATCH if exists).
- * - On pass: if a marker comment exists (from any prior run), replaces it with a
- *   pass body. If no marker comment exists, stays silent.
+ * - On pass with prior comment: deletes the prior comment.
+ * - On pass with no prior comment: stays silent.
  */
 export async function upsertComment(
   body: string,
@@ -57,7 +57,12 @@ export async function upsertComment(
 ): Promise<void> {
   const existingId = await findExistingComment(repo, pr, gh);
 
-  if (passed && existingId === null) return; // nothing to update
+  if (passed && existingId === null) return;
+
+  if (passed && existingId !== null) {
+    await gh(["api", `repos/${repo}/issues/comments/${existingId}`, "-X", "DELETE"]);
+    return;
+  }
 
   if (existingId !== null) {
     await gh([

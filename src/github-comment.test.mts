@@ -14,7 +14,6 @@ function makeGh(responses: Record<string, string>): GhRunner & ReturnType<typeof
 }
 
 const FAIL_BODY = `${COMMENT_MARKER}\n## failed`;
-const PASS_BODY = `${COMMENT_MARKER}\n## passed`;
 
 describe("upsertComment", () => {
   it("posts a new comment on failure when none exists", async () => {
@@ -31,16 +30,16 @@ describe("upsertComment", () => {
     expect(calls.some((c) => c.includes("comments/99") && c.includes("PATCH"))).toBe(true);
   });
 
-  it("patches an existing failure comment to pass body", async () => {
+  it("deletes an existing comment on pass", async () => {
     const gh = makeGh({ "issues/42/comments --paginate": "99\n" });
-    await upsertComment(PASS_BODY, "owner/repo", 42, true, gh);
+    await upsertComment("", "owner/repo", 42, true, gh);
     const calls = gh.mock.calls.map((c) => c[0].join(" "));
-    expect(calls.some((c) => c.includes("comments/99") && c.includes("PATCH"))).toBe(true);
+    expect(calls.some((c) => c.includes("comments/99") && c.includes("DELETE"))).toBe(true);
   });
 
   it("does nothing on pass when no prior comment exists", async () => {
     const gh = makeGh({ "issues/42/comments --paginate": "" });
-    await upsertComment(PASS_BODY, "owner/repo", 42, true, gh);
+    await upsertComment("", "owner/repo", 42, true, gh);
     expect(gh.mock.calls.length).toBe(1);
   });
 

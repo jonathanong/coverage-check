@@ -38,6 +38,6 @@ export type CoverageCheckResult = {
 
 export type SuiteMeta = {
   sha?: string;
-  ref?: string;
+  branch?: string;
   timestamp?: string;
 };
