@@ -726,4 +726,33 @@ describe("with a real git repo and a known diff", () => {
     const content = readFileSync(summaryFile, "utf8");
     expect(content).toContain("Coverage summary");
   });
+
+  it("does not write step summary when summaryFile is null even if env var is set", async () => {
+    const summaryFile = join(tmpDir, "should-not-exist.md");
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    const origEnv = process.env["GITHUB_STEP_SUMMARY"];
+    process.env["GITHUB_STEP_SUMMARY"] = summaryFile;
+    try {
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: "backend",
+        summaryFile: null,
+      });
+    } finally {
+      if (origEnv === undefined) delete process.env["GITHUB_STEP_SUMMARY"];
+      else process.env["GITHUB_STEP_SUMMARY"] = origEnv;
+    }
+    expect(() => readFileSync(summaryFile, "utf8")).toThrow();
+  });
 });

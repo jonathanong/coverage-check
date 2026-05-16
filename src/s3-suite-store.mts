@@ -35,12 +35,29 @@ export class S3SuiteStore implements SuiteStore {
 
   async list(): Promise<string[]> {
     const pfx = this.prefix ? `${this.prefix}/` : "";
-    const resp = (await this.client.send(
-      new ListObjectsV2Command({ Bucket: this.bucket, Prefix: pfx, Delimiter: "/" }),
-    )) as { CommonPrefixes?: { Prefix?: string }[] };
-    return (resp.CommonPrefixes ?? [])
-      .map((cp) => cp.Prefix?.replace(pfx, "").replace(/\/$/, "") ?? "")
-      .filter(Boolean);
+    const suites: string[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const resp = (await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: pfx,
+          Delimiter: "/",
+          ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
+        }),
+      )) as {
+        CommonPrefixes?: { Prefix?: string }[];
+        IsTruncated?: boolean;
+        NextContinuationToken?: string;
+      };
+      suites.push(
+        ...(resp.CommonPrefixes ?? [])
+          .map((cp) => cp.Prefix?.replace(pfx, "").replace(/\/$/, "") ?? "")
+          .filter(Boolean),
+      );
+      continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+    } while (continuationToken);
+    return suites;
   }
 
   async get(suite: string, opts?: { sha?: string; branch?: string }): Promise<Buffer | null> {

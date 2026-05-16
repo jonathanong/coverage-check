@@ -51,6 +51,26 @@ describe("S3SuiteStore — list()", () => {
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
     expect(await store.list()).toEqual(["web"]);
   });
+
+  it("paginates through all results when IsTruncated is true", async () => {
+    let callCount = 0;
+    const client = makeClient(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return {
+          CommonPrefixes: [{ Prefix: `${PREFIX}/suite-a/` }],
+          IsTruncated: true,
+          NextContinuationToken: "token-xyz",
+        };
+      }
+      return { CommonPrefixes: [{ Prefix: `${PREFIX}/suite-b/` }], IsTruncated: false };
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    expect(await store.list()).toEqual(["suite-a", "suite-b"]);
+    expect(client.send).toHaveBeenCalledTimes(2);
+    const secondCmd = client.send.mock.calls[1][0] as ListObjectsV2Command;
+    expect(secondCmd.input.ContinuationToken).toBe("token-xyz");
+  });
 });
 
 describe("S3SuiteStore — get()", () => {
