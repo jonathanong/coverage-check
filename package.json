@@ -6,10 +6,11 @@
   "author": "Jonathan Ong",
   "type": "module",
   "bin": {
-    "coverage-check": "./dist/bin/coverage-check.mjs"
+    "coverage-check": "./bin/coverage-check.mjs"
   },
   "files": [
     "dist/**",
+    "bin/coverage-check.mjs",
     "README.md",
     "LICENSE"
   ],
