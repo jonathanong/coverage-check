@@ -1,8 +1,14 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { assertSafePathComponent, FileSystemSuiteStore } from "./suite-store.mts";
+import {
+  assertSafePathComponent,
+  decodeBranchName,
+  encodeBranchName,
+  FileSystemSuiteStore,
+  isNewerTimestamp,
+} from "./suite-store.mts";
 
 describe("FileSystemSuiteStore", () => {
   let tmpDir: string;
@@ -80,6 +86,21 @@ describe("FileSystemSuiteStore", () => {
       expect(result!.toString()).toBe(lcov.toString());
     });
 
+    it("falls back to the legacy lcov.info layout when no pointer exists", async () => {
+      const lcov = "SF:legacy/foo.mts\nDA:1,1\nend_of_record\n";
+      const suiteDir = join(tmpDir, "legacy");
+      mkdirSync(suiteDir);
+      writeFileSync(join(suiteDir, "lcov.info"), lcov);
+      expect((await store.get("legacy"))!.toString()).toBe(lcov);
+    });
+
+    it("rethrows non-ENOENT errors from the legacy fallback read", async () => {
+      const suiteDir = join(tmpDir, "legacy");
+      mkdirSync(suiteDir);
+      mkdirSync(join(suiteDir, "lcov.info"));
+      await expect(store.get("legacy")).rejects.toThrow();
+    });
+
     it("returns the LCOV buffer when get() is called with explicit sha", async () => {
       const lcov = Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
       await store.put("backend", lcov, { sha: "abc123", branch: "main" });
@@ -96,6 +117,18 @@ describe("FileSystemSuiteStore", () => {
       // Branch pointer now points to sha2; sha1 still exists on disk
       const result = await store.get("backend", { branch: "main" });
       expect(result!.toString()).toBe(lcovV2.toString());
+    });
+
+    it("falls back to the previous unencoded branch pointer path", async () => {
+      const lcov = Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
+      const shaDir = join(tmpDir, "backend", "sha", "abc");
+      const branchDir = join(tmpDir, "backend", "branch", "main");
+      mkdirSync(shaDir, { recursive: true });
+      mkdirSync(branchDir, { recursive: true });
+      writeFileSync(join(shaDir, "lcov.info"), lcov);
+      writeFileSync(join(branchDir, "latest.json"), JSON.stringify({ sha: "abc" }));
+
+      expect((await store.get("backend", { branch: "main" }))!.toString()).toBe(lcov.toString());
     });
 
     it("rethrows non-ENOENT errors from pointer readFileSync", async () => {
@@ -115,7 +148,13 @@ describe("FileSystemSuiteStore", () => {
       await store.put("backend", lcov, { sha: "abc123", branch: "main" });
 
       const lcovPath = join(tmpDir, "backend", "sha", "abc123", "lcov.info");
-      const pointerPath = join(tmpDir, "backend", "branch", "main", "latest.json");
+      const pointerPath = join(
+        tmpDir,
+        "backend",
+        "branch",
+        encodeBranchName("main"),
+        "latest.json",
+      );
       expect(readFileSync(lcovPath).toString()).toBe(lcov.toString());
 
       const pointer = JSON.parse(readFileSync(pointerPath, "utf8"));
@@ -130,9 +169,22 @@ describe("FileSystemSuiteStore", () => {
         timestamp: "2026-01-01T00:00:00.000Z",
       });
       const pointer = JSON.parse(
-        readFileSync(join(tmpDir, "backend", "branch", "main", "latest.json"), "utf8"),
+        readFileSync(
+          join(tmpDir, "backend", "branch", encodeBranchName("main"), "latest.json"),
+          "utf8",
+        ),
       );
       expect(pointer.timestamp).toBe("2026-01-01T00:00:00.000Z");
+    });
+
+    it("rejects invalid incoming timestamps", async () => {
+      await expect(
+        store.put("backend", Buffer.from(""), {
+          sha: "abc",
+          branch: "main",
+          timestamp: "not-a-date",
+        }),
+      ).rejects.toThrow("invalid timestamp");
     });
 
     it("creates a default timestamp when none is provided", async () => {
@@ -140,7 +192,10 @@ describe("FileSystemSuiteStore", () => {
       await store.put("backend", Buffer.from(""), { sha: "abc", branch: "main" });
       const after = new Date().toISOString();
       const pointer = JSON.parse(
-        readFileSync(join(tmpDir, "backend", "branch", "main", "latest.json"), "utf8"),
+        readFileSync(
+          join(tmpDir, "backend", "branch", encodeBranchName("main"), "latest.json"),
+          "utf8",
+        ),
       );
       expect(pointer.timestamp >= before).toBe(true);
       expect(pointer.timestamp <= after).toBe(true);
@@ -168,6 +223,60 @@ describe("FileSystemSuiteStore", () => {
       expect((await store.get("backend", { sha: "sha1" }))!.toString()).toBe("v1");
       expect((await store.get("backend", { sha: "sha2" }))!.toString()).toBe("v2");
     });
+
+    it("accepts branch names with slashes by encoding the path component", async () => {
+      await store.put("backend", Buffer.from("feature"), {
+        sha: "abc",
+        branch: "feature/foo",
+      });
+      expect((await store.get("backend", { branch: "feature/foo" }))!.toString()).toBe("feature");
+      expect(
+        readFileSync(
+          join(tmpDir, "backend", "branch", encodeBranchName("feature/foo"), "latest.json"),
+          "utf8",
+        ),
+      ).toContain("abc");
+    });
+
+    it("does not regress a branch pointer to an older timestamp", async () => {
+      await store.put("backend", Buffer.from("new"), {
+        sha: "new",
+        branch: "main",
+        timestamp: "2026-01-02T00:00:00.000Z",
+      });
+      await store.put("backend", Buffer.from("old"), {
+        sha: "old",
+        branch: "main",
+        timestamp: "2026-01-01T00:00:00.000Z",
+      });
+      expect((await store.get("backend", { branch: "main" }))!.toString()).toBe("new");
+      expect((await store.get("backend", { sha: "old" }))!.toString()).toBe("old");
+    });
+
+    it("rethrows non-ENOENT errors from pointer comparison", async () => {
+      const branchDir = join(tmpDir, "backend", "branch", encodeBranchName("main"));
+      mkdirSync(join(tmpDir, "backend", "sha", "abc"), { recursive: true });
+      mkdirSync(branchDir, { recursive: true });
+      mkdirSync(join(branchDir, "latest.json"));
+      await expect(
+        store.put("backend", Buffer.from(""), { sha: "abc", branch: "main" }),
+      ).rejects.toThrow();
+    });
+
+    it("writes the legacy layout when metadata is omitted", async () => {
+      await store.put("backend", Buffer.from("legacy"));
+      expect(readFileSync(join(tmpDir, "backend", "lcov.info"), "utf8")).toBe("legacy");
+      expect((await store.get("backend"))!.toString()).toBe("legacy");
+    });
+
+    it("rejects partial pointer metadata", async () => {
+      await expect(store.put("backend", Buffer.from(""), { sha: "abc" } as never)).rejects.toThrow(
+        "invalid branch",
+      );
+      await expect(
+        store.put("backend", Buffer.from(""), { branch: "main" } as never),
+      ).rejects.toThrow("invalid sha");
+    });
   });
 
   describe("path traversal protection", () => {
@@ -175,9 +284,6 @@ describe("FileSystemSuiteStore", () => {
     for (const val of invalid) {
       it(`get() rejects suite=${JSON.stringify(val)}`, async () => {
         await expect(store.get(val)).rejects.toThrow("invalid suite");
-      });
-      it(`get() rejects branch=${JSON.stringify(val)}`, async () => {
-        await expect(store.get("backend", { branch: val })).rejects.toThrow("invalid branch");
       });
       it(`get() rejects sha=${JSON.stringify(val)}`, async () => {
         await expect(store.get("backend", { sha: val })).rejects.toThrow("invalid sha");
@@ -192,11 +298,6 @@ describe("FileSystemSuiteStore", () => {
           store.put("backend", Buffer.from(""), { sha: val, branch: "main" }),
         ).rejects.toThrow("invalid sha");
       });
-      it(`put() rejects branch=${JSON.stringify(val)}`, async () => {
-        await expect(
-          store.put("backend", Buffer.from(""), { sha: "abc", branch: val }),
-        ).rejects.toThrow("invalid branch");
-      });
     }
   });
 });
@@ -205,5 +306,30 @@ describe("assertSafePathComponent", () => {
   it("rejects non-string values at runtime (e.g. from JSON.parse)", () => {
     expect(() => assertSafePathComponent(123 as unknown as string, "sha")).toThrow("invalid sha");
     expect(() => assertSafePathComponent(null as unknown as string, "sha")).toThrow("invalid sha");
+  });
+});
+
+describe("branch name encoding", () => {
+  it("round-trips branch names with path separators", () => {
+    const encoded = encodeBranchName("feature/foo");
+    expect(encoded).not.toContain("/");
+    expect(decodeBranchName(encoded)).toBe("feature/foo");
+  });
+
+  it("rejects empty and non-string branch names at runtime", () => {
+    expect(() => encodeBranchName("")).toThrow("invalid branch");
+    expect(() => encodeBranchName(null as unknown as string)).toThrow("invalid branch");
+  });
+});
+
+describe("isNewerTimestamp", () => {
+  it("returns false when there is no current timestamp", () => {
+    expect(isNewerTimestamp(undefined, "2026-01-01T00:00:00.000Z")).toBe(false);
+  });
+
+  it("rejects an invalid incoming timestamp", () => {
+    expect(() => isNewerTimestamp("2026-01-01T00:00:00.000Z", "not-a-date")).toThrow(
+      "invalid timestamp",
+    );
   });
 });

@@ -139,22 +139,22 @@ describe("buildSummaryMarkdown", () => {
     expect(md).not.toContain("N/A");
   });
 
-  it("escapes pipe characters in suite names, branch names, and rule names", () => {
+  it("escapes markdown-sensitive characters in suite names, branch names, and rule names", () => {
     const pipeSource: SuiteSource = {
-      suite: "back|end",
+      suite: "back|`end",
       source: "store",
       lcov: new Map(),
     };
     const pipeResult: CoverageCheckResult = {
       passed: true,
       buckets: [
-        { rule: "back|end/**", threshold: 90, coverable: 10, hit: 10, passed: true, files: [] },
+        { rule: "back|`end/**", threshold: 90, coverable: 10, hit: 10, passed: true, files: [] },
       ],
       informational: [],
     };
-    const md = buildSummaryMarkdown([pipeSource], pipeResult, "N/A", "feat|branch");
-    expect(md).toContain("back\\|end");
-    expect(md).toContain("feat\\|branch");
+    const md = buildSummaryMarkdown([pipeSource], pipeResult, "N/A", "feat|`branch");
+    expect(md).toContain("`` back\\|`end ``");
+    expect(md).toContain("feat\\|`branch");
   });
 });
 

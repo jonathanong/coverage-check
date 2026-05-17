@@ -1,13 +1,17 @@
-import { buffer } from "node:stream/consumers";
-import { Readable } from "node:stream";
 import {
   GetObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { assertSafePathComponent } from "./suite-store.mts";
-import type { SuiteMeta, SuiteStore } from "./suite-store.mts";
+import {
+  assertSafePathComponent,
+  assertValidTimestamp,
+  encodeBranchName,
+  isNewerTimestamp,
+} from "./suite-store.mts";
+import { bodyToBuffer, isNotFound } from "./s3-utils.mts";
+import type { SuitePutMeta, SuiteStore } from "./suite-store.mts";
 
 type ClientLike = { send(cmd: object): Promise<unknown> };
 
@@ -67,20 +71,12 @@ export class S3SuiteStore implements SuiteStore {
     let sha = opts?.sha;
     if (!sha) {
       const branch = opts?.branch ?? "main";
-      assertSafePathComponent(branch, "branch");
       try {
-        const resp = (await this.client.send(
-          new GetObjectCommand({
-            Bucket: this.bucket,
-            Key: this.key(suite, "branch", branch, "latest.json"),
-          }),
-        )) as { Body: unknown };
-        const body = await bodyToBuffer(resp.Body);
-        const parsed = (JSON.parse(body.toString("utf8")) as { sha: string }).sha;
-        assertSafePathComponent(parsed, "sha");
-        sha = parsed;
+        const pointer = await this.readPointer(suite, branch);
+        assertSafePathComponent(pointer.sha, "sha");
+        sha = pointer.sha;
       } catch (err) {
-        if (isNotFound(err)) return null;
+        if (isNotFound(err)) return this.getLegacy(suite);
         throw err;
       }
     }
@@ -98,41 +94,100 @@ export class S3SuiteStore implements SuiteStore {
     }
   }
 
-  async put(
-    suite: string,
-    lcov: Buffer,
-    meta: SuiteMeta & { sha: string; branch: string },
-  ): Promise<void> {
+  async put(suite: string, lcov: Buffer, meta?: SuitePutMeta): Promise<void> {
     assertSafePathComponent(suite, "suite");
-    assertSafePathComponent(meta.sha, "sha");
-    assertSafePathComponent(meta.branch, "branch");
+    if (meta === undefined) {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: this.key(suite, "lcov.info"),
+          Body: lcov,
+          ContentType: "text/plain",
+        }),
+      );
+      return;
+    }
+    const { sha, branch } = meta;
+    assertSafePathComponent(sha, "sha");
     const ts = meta.timestamp ?? new Date().toISOString();
+    assertValidTimestamp(ts);
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
-        Key: this.key(suite, "sha", meta.sha, "lcov.info"),
+        Key: this.key(suite, "sha", sha, "lcov.info"),
         Body: lcov,
         ContentType: "text/plain",
       }),
     );
+    if (!(await this.shouldWritePointer(suite, branch, ts))) return;
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
-        Key: this.key(suite, "branch", meta.branch, "latest.json"),
-        Body: Buffer.from(JSON.stringify({ sha: meta.sha, timestamp: ts }), "utf8"),
+        Key: this.key(suite, "branch", encodeBranchName(branch), "latest.json"),
+        Body: Buffer.from(JSON.stringify({ sha, timestamp: ts }), "utf8"),
         ContentType: "application/json",
       }),
     );
   }
-}
 
-function isNotFound(err: unknown): boolean {
-  return err instanceof Error && (err.name === "NoSuchKey" || err.name === "NotFound");
-}
+  private async getLegacy(suite: string): Promise<Buffer | null> {
+    try {
+      const resp = (await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: this.key(suite, "lcov.info"),
+        }),
+      )) as { Body: unknown };
+      return bodyToBuffer(resp.Body);
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+  }
 
-async function bodyToBuffer(body: unknown): Promise<Buffer> {
-  if (body instanceof Readable) return buffer(body);
-  if (body instanceof Uint8Array) return Buffer.from(body);
-  if (body instanceof Blob) return Buffer.from(await body.arrayBuffer());
-  throw new Error("unexpected S3 response body type");
+  private async shouldWritePointer(
+    suite: string,
+    branch: string,
+    incomingTimestamp: string,
+  ): Promise<boolean> {
+    try {
+      const resp = (await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: this.key(suite, "branch", encodeBranchName(branch), "latest.json"),
+        }),
+      )) as { Body: unknown };
+      if (resp.Body === undefined) return true;
+      const body = await bodyToBuffer(resp.Body);
+      const current = JSON.parse(body.toString("utf8")) as { timestamp?: string };
+      return !isNewerTimestamp(current.timestamp, incomingTimestamp);
+    } catch (err) {
+      if (isNotFound(err)) return true;
+      throw err;
+    }
+  }
+
+  private async readPointer(
+    suite: string,
+    branch: string,
+  ): Promise<{ sha: string; timestamp?: string }> {
+    const keys = [
+      this.key(suite, "branch", encodeBranchName(branch), "latest.json"),
+      this.key(suite, "branch", branch, "latest.json"),
+    ];
+    let lastNotFound: unknown;
+    for (const key of keys) {
+      try {
+        const resp = (await this.client.send(
+          new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+        )) as { Body: unknown };
+        const body = await bodyToBuffer(resp.Body);
+        return JSON.parse(body.toString("utf8")) as { sha: string; timestamp?: string };
+      } catch (err) {
+        if (!isNotFound(err)) throw err;
+        lastNotFound = err;
+      }
+    }
+    throw lastNotFound;
+  }
 }

@@ -26,7 +26,15 @@ function pctStr(hit: number, total: number): string {
 }
 
 function escMd(s: string): string {
-  return s.replace(/\|/g, "\\|");
+  return s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+}
+
+function codeSpan(s: string): string {
+  const escaped = escMd(s);
+  const longestRun = Math.max(0, ...Array.from(escaped.matchAll(/`+/g), (m) => m[0].length));
+  if (longestRun === 0) return `\`${escaped}\``;
+  const ticks = "`".repeat(longestRun + 1);
+  return `${ticks} ${escaped} ${ticks}`;
 }
 
 export function buildSummaryMarkdown(
@@ -39,7 +47,7 @@ export function buildSummaryMarkdown(
     .map(({ suite, source, lcov }) => {
       const { hit, total } = suiteTotals(lcov);
       const sourceLabel = source === "fresh" ? "fresh" : `store (${escMd(branch)})`;
-      return `| \`${escMd(suite)}\` | ${sourceLabel} | ${pctStr(hit, total)} |`;
+      return `| ${codeSpan(suite)} | ${sourceLabel} | ${pctStr(hit, total)} |`;
     })
     .join("\n");
 
@@ -53,7 +61,7 @@ export function buildSummaryMarkdown(
     .map((b) => {
       const status = b.passed ? "✅" : "❌";
       const pct = b.coverable > 0 ? `${((b.hit / b.coverable) * 100).toFixed(1)}%` : "—";
-      return `| \`${escMd(b.rule)}\` | ${b.threshold}% | ${pct} | ${status} |`;
+      return `| ${codeSpan(b.rule)} | ${b.threshold}% | ${pct} | ${status} |`;
     })
     .join("\n");
 

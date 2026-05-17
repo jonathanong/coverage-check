@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { S3SuiteStore } from "./s3-suite-store.mts";
+import { encodeBranchName } from "./suite-store.mts";
 
 function makeClient(sendImpl: (cmd: unknown) => Promise<unknown>) {
   return { send: vi.fn(sendImpl) };
@@ -88,6 +89,55 @@ describe("S3SuiteStore — get()", () => {
     const result = await store.get("backend", { branch: "main" });
     expect(result!.toString()).toBe(LCOV);
     expect(client.send).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to legacy lcov.info when no branch pointer exists", async () => {
+    let callCount = 0;
+    const client = makeClient(async (cmd) => {
+      callCount++;
+      if (cmd instanceof GetObjectCommand && callCount < 3) return notFound();
+      return { Body: Buffer.from(LCOV) };
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    expect((await store.get("backend"))!.toString()).toBe(LCOV);
+    const keys = client.send.mock.calls.map((c) => (c[0] as GetObjectCommand).input.Key);
+    expect(keys).toEqual([
+      `${PREFIX}/backend/branch/${encodeBranchName("main")}/latest.json`,
+      `${PREFIX}/backend/branch/main/latest.json`,
+      `${PREFIX}/backend/lcov.info`,
+    ]);
+  });
+
+  it("falls back to the previous unencoded branch pointer key", async () => {
+    let callCount = 0;
+    const client = makeClient(async (cmd) => {
+      callCount++;
+      if (cmd instanceof GetObjectCommand) {
+        const key = cmd.input.Key;
+        if (key === `${PREFIX}/backend/branch/${encodeBranchName("main")}/latest.json`) {
+          return notFound();
+        }
+        if (key === `${PREFIX}/backend/branch/main/latest.json`) {
+          return { Body: Buffer.from(POINTER) };
+        }
+        return { Body: Buffer.from(LCOV) };
+      }
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    expect((await store.get("backend", { branch: "main" }))!.toString()).toBe(LCOV);
+    expect(callCount).toBe(3);
+  });
+
+  it("rethrows unexpected errors from the legacy fallback fetch", async () => {
+    let callCount = 0;
+    const client = makeClient(async () => {
+      callCount++;
+      if (callCount < 3) return notFound();
+      throw new Error("legacy read failed");
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(store.get("backend")).rejects.toThrow("legacy read failed");
   });
 
   it("defaults to main branch when no opts provided", async () => {
@@ -212,13 +262,13 @@ describe("S3SuiteStore — put()", () => {
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
     await store.put("backend", Buffer.from(LCOV), { sha: "abc123", branch: "main" });
 
-    expect(client.send).toHaveBeenCalledTimes(2);
+    expect(client.send).toHaveBeenCalledTimes(3);
     const cmds = client.send.mock.calls.map((c) => c[0]);
-    expect(cmds.every((c) => c instanceof PutObjectCommand)).toBe(true);
+    expect(cmds.filter((c) => c instanceof PutObjectCommand)).toHaveLength(2);
 
-    const keys = cmds.map((c) => (c as PutObjectCommand).input.Key);
+    const keys = cmds.filter((c) => c instanceof PutObjectCommand).map((c) => c.input.Key);
     expect(keys).toContain(`${PREFIX}/backend/sha/abc123/lcov.info`);
-    expect(keys).toContain(`${PREFIX}/backend/branch/main/latest.json`);
+    expect(keys).toContain(`${PREFIX}/backend/branch/${encodeBranchName("main")}/latest.json`);
   });
 
   it("uses provided timestamp in pointer", async () => {
@@ -232,10 +282,23 @@ describe("S3SuiteStore — put()", () => {
     });
 
     const pointerCmd = client.send.mock.calls
+      .filter((c) => c[0] instanceof PutObjectCommand)
       .map((c) => c[0] as PutObjectCommand)
       .find((c) => c.input.Key?.endsWith("latest.json"))!;
     const pointer = JSON.parse((pointerCmd.input.Body as Buffer).toString("utf8"));
     expect(pointer.timestamp).toBe(ts);
+  });
+
+  it("rejects invalid incoming timestamps", async () => {
+    const client = makeClient(async () => ({}));
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(
+      store.put("backend", Buffer.from(LCOV), {
+        sha: "abc",
+        branch: "main",
+        timestamp: "not-a-date",
+      }),
+    ).rejects.toThrow("invalid timestamp");
   });
 
   it("generates a timestamp when none is provided", async () => {
@@ -244,6 +307,7 @@ describe("S3SuiteStore — put()", () => {
     await store.put("backend", Buffer.from(LCOV), { sha: "abc", branch: "main" });
 
     const pointerCmd = client.send.mock.calls
+      .filter((c) => c[0] instanceof PutObjectCommand)
       .map((c) => c[0] as PutObjectCommand)
       .find((c) => (c as PutObjectCommand).input.Key?.endsWith("latest.json"))!;
     const pointer = JSON.parse((pointerCmd.input.Body as Buffer).toString("utf8"));
@@ -256,9 +320,93 @@ describe("S3SuiteStore — put()", () => {
     const store = new S3SuiteStore({ bucket: BUCKET, client });
     await store.put("backend", Buffer.from(LCOV), { sha: "abc", branch: "main" });
 
-    const keys = client.send.mock.calls.map((c) => (c[0] as PutObjectCommand).input.Key);
+    const keys = client.send.mock.calls
+      .filter((c) => c[0] instanceof PutObjectCommand)
+      .map((c) => (c[0] as PutObjectCommand).input.Key);
     expect(keys).toContain("backend/sha/abc/lcov.info");
-    expect(keys).toContain("backend/branch/main/latest.json");
+    expect(keys).toContain(`backend/branch/${encodeBranchName("main")}/latest.json`);
+  });
+
+  it("accepts branch names with slashes by encoding the path component", async () => {
+    const client = makeClient(async () => ({}));
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await store.put("backend", Buffer.from(LCOV), { sha: "abc", branch: "feature/foo" });
+
+    const keys = client.send.mock.calls
+      .filter((c) => c[0] instanceof PutObjectCommand)
+      .map((c) => (c[0] as PutObjectCommand).input.Key);
+    expect(keys).toContain(
+      `${PREFIX}/backend/branch/${encodeBranchName("feature/foo")}/latest.json`,
+    );
+  });
+
+  it("does not regress a branch pointer to an older timestamp", async () => {
+    const current = JSON.stringify({ sha: "new", timestamp: "2026-01-02T00:00:00.000Z" });
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof GetObjectCommand) return { Body: Buffer.from(current) };
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await store.put("backend", Buffer.from(LCOV), {
+      sha: "old",
+      branch: "main",
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+
+    const putKeys = client.send.mock.calls
+      .filter((c) => c[0] instanceof PutObjectCommand)
+      .map((c) => (c[0] as PutObjectCommand).input.Key);
+    expect(putKeys).toEqual([`${PREFIX}/backend/sha/old/lcov.info`]);
+  });
+
+  it("writes a branch pointer when no current pointer exists", async () => {
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof GetObjectCommand) return notFound();
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await store.put("backend", Buffer.from(LCOV), { sha: "abc", branch: "main" });
+
+    const putKeys = client.send.mock.calls
+      .filter((c) => c[0] instanceof PutObjectCommand)
+      .map((c) => (c[0] as PutObjectCommand).input.Key);
+    expect(putKeys).toEqual([
+      `${PREFIX}/backend/sha/abc/lcov.info`,
+      `${PREFIX}/backend/branch/${encodeBranchName("main")}/latest.json`,
+    ]);
+  });
+
+  it("rethrows unexpected errors from pointer comparison", async () => {
+    let callCount = 0;
+    const client = makeClient(async () => {
+      callCount++;
+      if (callCount === 1) return {};
+      throw new Error("pointer read failed");
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(
+      store.put("backend", Buffer.from(LCOV), { sha: "abc", branch: "main" }),
+    ).rejects.toThrow("pointer read failed");
+  });
+
+  it("writes the legacy layout when metadata is omitted", async () => {
+    const client = makeClient(async () => ({}));
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await store.put("backend", Buffer.from(LCOV));
+
+    const put = client.send.mock.calls[0][0] as PutObjectCommand;
+    expect(put.input.Key).toBe(`${PREFIX}/backend/lcov.info`);
+  });
+
+  it("rejects partial pointer metadata", async () => {
+    const client = makeClient(async () => ({}));
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(store.put("backend", Buffer.from(LCOV), { sha: "abc" } as never)).rejects.toThrow(
+      "invalid branch",
+    );
+    await expect(
+      store.put("backend", Buffer.from(LCOV), { branch: "main" } as never),
+    ).rejects.toThrow("invalid sha");
   });
 });
 
@@ -273,9 +421,6 @@ describe("S3SuiteStore — path traversal protection", () => {
     it(`get() rejects suite=${JSON.stringify(val)}`, async () => {
       await expect(store.get(val)).rejects.toThrow("invalid suite");
     });
-    it(`get() rejects branch=${JSON.stringify(val)}`, async () => {
-      await expect(store.get("backend", { branch: val })).rejects.toThrow("invalid branch");
-    });
     it(`get() rejects sha=${JSON.stringify(val)}`, async () => {
       await expect(store.get("backend", { sha: val })).rejects.toThrow("invalid sha");
     });
@@ -288,11 +433,6 @@ describe("S3SuiteStore — path traversal protection", () => {
       await expect(
         store.put("backend", Buffer.from(""), { sha: val, branch: "main" }),
       ).rejects.toThrow("invalid sha");
-    });
-    it(`put() rejects branch=${JSON.stringify(val)}`, async () => {
-      await expect(
-        store.put("backend", Buffer.from(""), { sha: "abc", branch: val }),
-      ).rejects.toThrow("invalid branch");
     });
   }
 });

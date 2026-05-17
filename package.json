@@ -6,11 +6,24 @@
   "author": "Jonathan Ong",
   "type": "module",
   "bin": {
-    "coverage-check": "./bin/coverage-check.mts"
+    "coverage-check": "./bin/coverage-check.mjs"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/src/coverage-check.d.mts",
+      "import": "./dist/src/coverage-check.mjs"
+    },
+    "./src/*.mts": {
+      "types": "./dist/src/*.d.mts",
+      "import": "./dist/src/*.mjs"
+    },
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/src/coverage-check.d.mts",
   "files": [
-    "bin/**",
-    "src/**",
+    "dist/**",
+    "bin/coverage-check.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -33,7 +46,8 @@
   },
   "scripts": {
     "prepare": "husky",
-    "prepublishOnly": "npm run typecheck && npm test",
+    "build": "tsc --project tsconfig.build.json",
+    "prepublishOnly": "npm run build && npm run typecheck && npm test",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src/ bin/",
     "format": "oxfmt src/ bin/ README.md",
