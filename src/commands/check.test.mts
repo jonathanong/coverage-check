@@ -141,6 +141,10 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("returns 2 when --branch is empty", async () => {
+    expect(await main(["--branch", "", "--artifacts", artifactsDir])).toBe(2);
+  });
+
   it("returns 2 when both --store-fs and --store-s3 are provided", async () => {
     expect(
       await main([

@@ -153,8 +153,8 @@ describe("buildSummaryMarkdown", () => {
       informational: [],
     };
     const md = buildSummaryMarkdown([pipeSource], pipeResult, "N/A", "feat|`branch");
-    expect(md).toContain("back\\|\\`end");
-    expect(md).toContain("feat\\|\\`branch");
+    expect(md).toContain("`` back\\|`end ``");
+    expect(md).toContain("feat\\|`branch");
   });
 });
 

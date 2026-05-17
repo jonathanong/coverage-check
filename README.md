@@ -55,6 +55,8 @@ The `--suite` flag on `check` tells the tool to use fresh `--artifacts` for the 
 <prefix>/<suite>/branch/<encoded-branch>/latest.json  # pointer: { "sha": "...", "timestamp": "..." }
 ```
 
+S3-backed stores need `s3:PutObject` for writes and `s3:GetObject` for reading branch pointers and baselines. The pointer reader also checks the previous unencoded pointer key (for example `branch/main/latest.json`) so stores written before branch-name encoding remain readable.
+
 ### Suite store with filesystem
 
 For local development or simpler deployments:
@@ -196,7 +198,7 @@ class MyCustomStore implements SuiteStore {
   async put(
     suite: string,
     lcov: Buffer,
-    meta?: { sha?: string; branch?: string; timestamp?: string },
+    meta?: { sha: string; branch: string; timestamp?: string },
   ): Promise<void> {
     /* ... */
   }

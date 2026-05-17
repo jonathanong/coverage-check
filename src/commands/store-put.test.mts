@@ -19,6 +19,15 @@ describe("main argument parsing", () => {
     expect(await main(["--suite", "backend", "--store", "/tmp/s", "--sha", "abc"])).toBe(2);
   });
 
+  it("returns 2 when sha or branch metadata is empty", async () => {
+    expect(
+      await main(["--suite", "backend", "--store", "/tmp/s", "--sha", "", "--branch", "main"]),
+    ).toBe(2);
+    expect(
+      await main(["--suite", "backend", "--store", "/tmp/s", "--sha", "abc", "--branch", ""]),
+    ).toBe(2);
+  });
+
   it("returns 2 when a flag token follows as the value (e.g. --suite --store)", async () => {
     expect(await main(["--suite", "--store"])).toBe(2);
   });

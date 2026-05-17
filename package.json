@@ -12,7 +12,13 @@
     ".": {
       "types": "./dist/src/coverage-check.d.mts",
       "import": "./dist/src/coverage-check.mjs"
-    }
+    },
+    "./src/*.mts": {
+      "types": "./dist/src/*.d.mts",
+      "import": "./dist/src/*.mjs"
+    },
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
   },
   "types": "./dist/src/coverage-check.d.mts",
   "files": [

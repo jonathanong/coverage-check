@@ -70,11 +70,16 @@ function parseArgs(argv: string[]): StorePutArgs {
   if (!args.suite) throw new Error("--suite is required");
   if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
   if (!storeFs && !storeS3) throw new Error("--store-fs/--store or --store-s3 is required");
-  if ((args.sha && !args.branch) || (!args.sha && args.branch)) {
+  const hasSha = args.sha !== undefined;
+  const hasBranch = args.branch !== undefined;
+  if (hasSha !== hasBranch) {
     throw new Error("--sha and --branch must be provided together");
   }
   assertSafePathComponent(args.suite, "suite");
-  if (args.sha) assertSafePathComponent(args.sha, "sha");
+  if (args.sha !== undefined) assertSafePathComponent(args.sha, "sha");
+  if (args.branch !== undefined && args.branch.length === 0) {
+    throw new Error(`invalid branch: ${JSON.stringify(args.branch)}`);
+  }
 
   const store = makeStore({ fs: storeFs, s3: storeS3 })!;
   return { ...args, store };
@@ -103,14 +108,15 @@ export async function runStorePut(args: StorePutArgs): Promise<number> {
   const merged = mergeLcov(reports);
   const lcovText = toLcov(merged);
 
-  await args.store.put(args.suite, Buffer.from(lcovText, "utf8"), {
-    ...(args.sha ? { sha: args.sha } : {}),
-    ...(args.branch ? { branch: args.branch } : {}),
-  });
+  const meta =
+    args.sha !== undefined && args.branch !== undefined
+      ? { sha: args.sha, branch: args.branch }
+      : undefined;
+  await args.store.put(args.suite, Buffer.from(lcovText, "utf8"), meta);
 
-  const meta = args.sha ? ` sha=${args.sha} branch=${args.branch}` : "";
+  const metaLabel = args.sha !== undefined ? ` sha=${args.sha} branch=${args.branch}` : "";
   stdout(
-    `coverage-check store-put: stored suite "${args.suite}" (${lcovFiles.length} file(s))${meta}`,
+    `coverage-check store-put: stored suite "${args.suite}" (${lcovFiles.length} file(s))${metaLabel}`,
   );
   return 0;
 }

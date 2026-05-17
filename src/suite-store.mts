@@ -17,6 +17,8 @@ export function assertSafePathComponent(value: string, label: string): void {
 
 export type { SuiteMeta };
 
+export type SuitePutMeta = { sha: string; branch: string; timestamp?: string };
+
 export function encodeBranchName(branch: string): string {
   if (typeof branch !== "string" || branch.length === 0) {
     throw new Error(`invalid branch: ${JSON.stringify(branch)}`);
@@ -39,7 +41,7 @@ export interface SuiteStore {
    */
   get(suite: string, opts?: { sha?: string; branch?: string }): Promise<Buffer | null>;
   /** Stores the merged LCOV bytes for a suite. sha and branch enable pointer storage. */
-  put(suite: string, lcov: Buffer, meta?: SuiteMeta): Promise<void>;
+  put(suite: string, lcov: Buffer, meta?: SuitePutMeta): Promise<void>;
 }
 
 /**
@@ -77,9 +79,12 @@ export class FileSystemSuiteStore implements SuiteStore {
     let sha = opts?.sha;
     if (!sha) {
       const branch = opts?.branch ?? "main";
-      const pointerPath = join(this.root, suite, "branch", encodeBranchName(branch), "latest.json");
+      const pointerPaths = [
+        join(this.root, suite, "branch", encodeBranchName(branch), "latest.json"),
+        join(this.root, suite, "branch", branch, "latest.json"),
+      ];
       try {
-        const pointer = JSON.parse(readFileSync(pointerPath, "utf8")) as { sha: string };
+        const pointer = readPointerFile(pointerPaths);
         assertSafePathComponent(pointer.sha, "sha");
         sha = pointer.sha;
       } catch (err) {
@@ -96,19 +101,15 @@ export class FileSystemSuiteStore implements SuiteStore {
     }
   }
 
-  async put(suite: string, lcov: Buffer, meta: SuiteMeta = {}): Promise<void> {
+  async put(suite: string, lcov: Buffer, meta?: SuitePutMeta): Promise<void> {
     assertSafePathComponent(suite, "suite");
-    const hasSha = meta.sha !== undefined;
-    const hasBranch = meta.branch !== undefined;
-    if (!hasSha && !hasBranch) {
+    if (meta === undefined) {
       const suiteDir = join(this.root, suite);
       mkdirSync(suiteDir, { recursive: true });
       writeFileSync(join(suiteDir, "lcov.info"), lcov);
       return;
     }
-    if (!hasSha || !hasBranch) throw new Error("sha and branch must be provided together");
-    const sha = meta.sha!;
-    const branch = meta.branch!;
+    const { sha, branch } = meta;
     assertSafePathComponent(sha, "sha");
     const shaDir = join(this.root, suite, "sha", sha);
     mkdirSync(shaDir, { recursive: true });
@@ -118,6 +119,7 @@ export class FileSystemSuiteStore implements SuiteStore {
     mkdirSync(branchDir, { recursive: true });
     const pointerPath = join(branchDir, "latest.json");
     const timestamp = meta.timestamp ?? new Date().toISOString();
+    assertValidTimestamp(timestamp);
     if (!this.shouldWritePointer(pointerPath, timestamp)) return;
     writeFileSync(pointerPath, JSON.stringify({ sha, timestamp }, null, 2));
   }
@@ -143,8 +145,28 @@ export class FileSystemSuiteStore implements SuiteStore {
 }
 
 export function isNewerTimestamp(current: string | undefined, incoming: string): boolean {
+  assertValidTimestamp(incoming);
   if (!current) return false;
   const currentMs = Date.parse(current);
   const incomingMs = Date.parse(incoming);
   return Number.isFinite(currentMs) && Number.isFinite(incomingMs) && currentMs > incomingMs;
+}
+
+export function assertValidTimestamp(timestamp: string): void {
+  if (!Number.isFinite(Date.parse(timestamp))) {
+    throw new Error(`invalid timestamp: ${JSON.stringify(timestamp)}`);
+  }
+}
+
+function readPointerFile(paths: string[]): { sha: string; timestamp?: string } {
+  let lastNotFound: NodeJS.ErrnoException | null = null;
+  for (const path of paths) {
+    try {
+      return JSON.parse(readFileSync(path, "utf8")) as { sha: string; timestamp?: string };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      lastNotFound = err as NodeJS.ErrnoException;
+    }
+  }
+  throw lastNotFound;
 }

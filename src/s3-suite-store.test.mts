@@ -95,7 +95,7 @@ describe("S3SuiteStore — get()", () => {
     let callCount = 0;
     const client = makeClient(async (cmd) => {
       callCount++;
-      if (cmd instanceof GetObjectCommand && callCount === 1) return notFound();
+      if (cmd instanceof GetObjectCommand && callCount < 3) return notFound();
       return { Body: Buffer.from(LCOV) };
     });
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
@@ -103,15 +103,37 @@ describe("S3SuiteStore — get()", () => {
     const keys = client.send.mock.calls.map((c) => (c[0] as GetObjectCommand).input.Key);
     expect(keys).toEqual([
       `${PREFIX}/backend/branch/${encodeBranchName("main")}/latest.json`,
+      `${PREFIX}/backend/branch/main/latest.json`,
       `${PREFIX}/backend/lcov.info`,
     ]);
+  });
+
+  it("falls back to the previous unencoded branch pointer key", async () => {
+    let callCount = 0;
+    const client = makeClient(async (cmd) => {
+      callCount++;
+      if (cmd instanceof GetObjectCommand) {
+        const key = cmd.input.Key;
+        if (key === `${PREFIX}/backend/branch/${encodeBranchName("main")}/latest.json`) {
+          return notFound();
+        }
+        if (key === `${PREFIX}/backend/branch/main/latest.json`) {
+          return { Body: Buffer.from(POINTER) };
+        }
+        return { Body: Buffer.from(LCOV) };
+      }
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    expect((await store.get("backend", { branch: "main" }))!.toString()).toBe(LCOV);
+    expect(callCount).toBe(3);
   });
 
   it("rethrows unexpected errors from the legacy fallback fetch", async () => {
     let callCount = 0;
     const client = makeClient(async () => {
       callCount++;
-      if (callCount === 1) return notFound();
+      if (callCount < 3) return notFound();
       throw new Error("legacy read failed");
     });
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
@@ -267,6 +289,18 @@ describe("S3SuiteStore — put()", () => {
     expect(pointer.timestamp).toBe(ts);
   });
 
+  it("rejects invalid incoming timestamps", async () => {
+    const client = makeClient(async () => ({}));
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(
+      store.put("backend", Buffer.from(LCOV), {
+        sha: "abc",
+        branch: "main",
+        timestamp: "not-a-date",
+      }),
+    ).rejects.toThrow("invalid timestamp");
+  });
+
   it("generates a timestamp when none is provided", async () => {
     const client = makeClient(async () => ({}));
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
@@ -367,12 +401,12 @@ describe("S3SuiteStore — put()", () => {
   it("rejects partial pointer metadata", async () => {
     const client = makeClient(async () => ({}));
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
-    await expect(store.put("backend", Buffer.from(LCOV), { sha: "abc" })).rejects.toThrow(
-      "sha and branch must be provided together",
+    await expect(store.put("backend", Buffer.from(LCOV), { sha: "abc" } as never)).rejects.toThrow(
+      "invalid branch",
     );
-    await expect(store.put("backend", Buffer.from(LCOV), { branch: "main" })).rejects.toThrow(
-      "sha and branch must be provided together",
-    );
+    await expect(
+      store.put("backend", Buffer.from(LCOV), { branch: "main" } as never),
+    ).rejects.toThrow("invalid sha");
   });
 });
 
