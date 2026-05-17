@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import {
   decodeBranchName,
   encodeBranchName,
   FileSystemSuiteStore,
+  isNewerTimestamp,
 } from "./suite-store.mts";
 
 describe("FileSystemSuiteStore", () => {
@@ -91,6 +92,19 @@ describe("FileSystemSuiteStore", () => {
       mkdirSync(suiteDir);
       writeFileSync(join(suiteDir, "lcov.info"), lcov);
       expect((await store.get("legacy"))!.toString()).toBe(lcov);
+    });
+
+    it("rethrows non-ENOENT errors from the legacy fallback read", async () => {
+      const suiteDir = join(tmpDir, "legacy");
+      mkdirSync(suiteDir);
+      const lcovPath = join(suiteDir, "lcov.info");
+      writeFileSync(lcovPath, "");
+      chmodSync(lcovPath, 0o000);
+      try {
+        await expect(store.get("legacy")).rejects.toThrow();
+      } finally {
+        chmodSync(lcovPath, 0o600);
+      }
     });
 
     it("returns the LCOV buffer when get() is called with explicit sha", async () => {
@@ -223,10 +237,29 @@ describe("FileSystemSuiteStore", () => {
       expect((await store.get("backend", { sha: "old" }))!.toString()).toBe("old");
     });
 
+    it("rethrows non-ENOENT errors from pointer comparison", async () => {
+      const branchDir = join(tmpDir, "backend", "branch", encodeBranchName("main"));
+      mkdirSync(join(tmpDir, "backend", "sha", "abc"), { recursive: true });
+      mkdirSync(branchDir, { recursive: true });
+      mkdirSync(join(branchDir, "latest.json"));
+      await expect(
+        store.put("backend", Buffer.from(""), { sha: "abc", branch: "main" }),
+      ).rejects.toThrow();
+    });
+
     it("writes the legacy layout when metadata is omitted", async () => {
       await store.put("backend", Buffer.from("legacy"));
       expect(readFileSync(join(tmpDir, "backend", "lcov.info"), "utf8")).toBe("legacy");
       expect((await store.get("backend"))!.toString()).toBe("legacy");
+    });
+
+    it("rejects partial pointer metadata", async () => {
+      await expect(store.put("backend", Buffer.from(""), { sha: "abc" })).rejects.toThrow(
+        "sha and branch must be provided together",
+      );
+      await expect(store.put("backend", Buffer.from(""), { branch: "main" })).rejects.toThrow(
+        "sha and branch must be provided together",
+      );
     });
   });
 
@@ -265,5 +298,16 @@ describe("branch name encoding", () => {
     const encoded = encodeBranchName("feature/foo");
     expect(encoded).not.toContain("/");
     expect(decodeBranchName(encoded)).toBe("feature/foo");
+  });
+
+  it("rejects empty and non-string branch names at runtime", () => {
+    expect(() => encodeBranchName("")).toThrow("invalid branch");
+    expect(() => encodeBranchName(null as unknown as string)).toThrow("invalid branch");
+  });
+});
+
+describe("isNewerTimestamp", () => {
+  it("returns false when there is no current timestamp", () => {
+    expect(isNewerTimestamp(undefined, "2026-01-01T00:00:00.000Z")).toBe(false);
   });
 });

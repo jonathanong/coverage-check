@@ -107,6 +107,17 @@ describe("S3SuiteStore — get()", () => {
     ]);
   });
 
+  it("rethrows unexpected errors from the legacy fallback fetch", async () => {
+    let callCount = 0;
+    const client = makeClient(async () => {
+      callCount++;
+      if (callCount === 1) return notFound();
+      throw new Error("legacy read failed");
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(store.get("backend")).rejects.toThrow("legacy read failed");
+  });
+
   it("defaults to main branch when no opts provided", async () => {
     let callCount = 0;
     const client = makeClient(async (cmd) => {
@@ -314,6 +325,36 @@ describe("S3SuiteStore — put()", () => {
     expect(putKeys).toEqual([`${PREFIX}/backend/sha/old/lcov.info`]);
   });
 
+  it("writes a branch pointer when no current pointer exists", async () => {
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof GetObjectCommand) return notFound();
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await store.put("backend", Buffer.from(LCOV), { sha: "abc", branch: "main" });
+
+    const putKeys = client.send.mock.calls
+      .filter((c) => c[0] instanceof PutObjectCommand)
+      .map((c) => (c[0] as PutObjectCommand).input.Key);
+    expect(putKeys).toEqual([
+      `${PREFIX}/backend/sha/abc/lcov.info`,
+      `${PREFIX}/backend/branch/${encodeBranchName("main")}/latest.json`,
+    ]);
+  });
+
+  it("rethrows unexpected errors from pointer comparison", async () => {
+    let callCount = 0;
+    const client = makeClient(async () => {
+      callCount++;
+      if (callCount === 1) return {};
+      throw new Error("pointer read failed");
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(
+      store.put("backend", Buffer.from(LCOV), { sha: "abc", branch: "main" }),
+    ).rejects.toThrow("pointer read failed");
+  });
+
   it("writes the legacy layout when metadata is omitted", async () => {
     const client = makeClient(async () => ({}));
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
@@ -321,6 +362,17 @@ describe("S3SuiteStore — put()", () => {
 
     const put = client.send.mock.calls[0][0] as PutObjectCommand;
     expect(put.input.Key).toBe(`${PREFIX}/backend/lcov.info`);
+  });
+
+  it("rejects partial pointer metadata", async () => {
+    const client = makeClient(async () => ({}));
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(store.put("backend", Buffer.from(LCOV), { sha: "abc" })).rejects.toThrow(
+      "sha and branch must be provided together",
+    );
+    await expect(store.put("backend", Buffer.from(LCOV), { branch: "main" })).rejects.toThrow(
+      "sha and branch must be provided together",
+    );
   });
 });
 
