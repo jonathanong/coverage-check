@@ -8,6 +8,13 @@
   "bin": {
     "coverage-check": "./bin/coverage-check.mjs"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/src/coverage-check.d.mts",
+      "import": "./dist/src/coverage-check.mjs"
+    }
+  },
+  "types": "./dist/src/coverage-check.d.mts",
   "files": [
     "dist/**",
     "bin/coverage-check.mjs",

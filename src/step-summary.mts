@@ -26,7 +26,7 @@ function pctStr(hit: number, total: number): string {
 }
 
 function escMd(s: string): string {
-  return s.replace(/\|/g, "\\|");
+  return s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/`/g, "\\`");
 }
 
 export function buildSummaryMarkdown(

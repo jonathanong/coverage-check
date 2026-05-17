@@ -78,9 +78,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
         args.stripPrefixes.push(val());
         break;
       case "--branch": {
-        const b = val();
-        assertSafePathComponent(b, "branch");
-        args.branch = b;
+        args.branch = val();
         break;
       }
       case "--store":

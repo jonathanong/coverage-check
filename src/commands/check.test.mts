@@ -128,13 +128,13 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
-  it("accepts --branch flag", async () => {
+  it("accepts --branch flag with a real branch name", async () => {
     expect(
       await main([
         "--rules",
         join(tmpDir, "nonexistent.yml"),
         "--branch",
-        "main",
+        "feature/foo",
         "--artifacts",
         artifactsDir,
       ]),

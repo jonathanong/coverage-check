@@ -6,7 +6,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { assertSafePathComponent } from "./suite-store.mts";
+import { assertSafePathComponent, encodeBranchName, isNewerTimestamp } from "./suite-store.mts";
 import type { SuiteMeta, SuiteStore } from "./suite-store.mts";
 
 type ClientLike = { send(cmd: object): Promise<unknown> };
@@ -67,12 +67,11 @@ export class S3SuiteStore implements SuiteStore {
     let sha = opts?.sha;
     if (!sha) {
       const branch = opts?.branch ?? "main";
-      assertSafePathComponent(branch, "branch");
       try {
         const resp = (await this.client.send(
           new GetObjectCommand({
             Bucket: this.bucket,
-            Key: this.key(suite, "branch", branch, "latest.json"),
+            Key: this.key(suite, "branch", encodeBranchName(branch), "latest.json"),
           }),
         )) as { Body: unknown };
         const body = await bodyToBuffer(resp.Body);
@@ -80,7 +79,7 @@ export class S3SuiteStore implements SuiteStore {
         assertSafePathComponent(parsed, "sha");
         sha = parsed;
       } catch (err) {
-        if (isNotFound(err)) return null;
+        if (isNotFound(err)) return this.getLegacy(suite);
         throw err;
       }
     }
@@ -98,31 +97,80 @@ export class S3SuiteStore implements SuiteStore {
     }
   }
 
-  async put(
-    suite: string,
-    lcov: Buffer,
-    meta: SuiteMeta & { sha: string; branch: string },
-  ): Promise<void> {
+  async put(suite: string, lcov: Buffer, meta: SuiteMeta = {}): Promise<void> {
     assertSafePathComponent(suite, "suite");
-    assertSafePathComponent(meta.sha, "sha");
-    assertSafePathComponent(meta.branch, "branch");
+    const hasSha = meta.sha !== undefined;
+    const hasBranch = meta.branch !== undefined;
+    if (!hasSha && !hasBranch) {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: this.key(suite, "lcov.info"),
+          Body: lcov,
+          ContentType: "text/plain",
+        }),
+      );
+      return;
+    }
+    if (!hasSha || !hasBranch) throw new Error("sha and branch must be provided together");
+    const sha = meta.sha!;
+    const branch = meta.branch!;
+    assertSafePathComponent(sha, "sha");
     const ts = meta.timestamp ?? new Date().toISOString();
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
-        Key: this.key(suite, "sha", meta.sha, "lcov.info"),
+        Key: this.key(suite, "sha", sha, "lcov.info"),
         Body: lcov,
         ContentType: "text/plain",
       }),
     );
+    if (!(await this.shouldWritePointer(suite, branch, ts))) return;
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
-        Key: this.key(suite, "branch", meta.branch, "latest.json"),
-        Body: Buffer.from(JSON.stringify({ sha: meta.sha, timestamp: ts }), "utf8"),
+        Key: this.key(suite, "branch", encodeBranchName(branch), "latest.json"),
+        Body: Buffer.from(JSON.stringify({ sha, timestamp: ts }), "utf8"),
         ContentType: "application/json",
       }),
     );
+  }
+
+  private async getLegacy(suite: string): Promise<Buffer | null> {
+    try {
+      const resp = (await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: this.key(suite, "lcov.info"),
+        }),
+      )) as { Body: unknown };
+      return bodyToBuffer(resp.Body);
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  private async shouldWritePointer(
+    suite: string,
+    branch: string,
+    incomingTimestamp: string,
+  ): Promise<boolean> {
+    try {
+      const resp = (await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: this.key(suite, "branch", encodeBranchName(branch), "latest.json"),
+        }),
+      )) as { Body: unknown };
+      if (resp.Body === undefined) return true;
+      const body = await bodyToBuffer(resp.Body);
+      const current = JSON.parse(body.toString("utf8")) as { timestamp?: string };
+      return !isNewerTimestamp(current.timestamp, incomingTimestamp);
+    } catch (err) {
+      if (isNotFound(err)) return true;
+      throw err;
+    }
   }
 }
 

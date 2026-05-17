@@ -14,11 +14,8 @@ describe("main argument parsing", () => {
     expect(await main(["--suite", "backend", "--sha", "abc", "--branch", "main"])).toBe(2);
   });
 
-  it("returns 2 when --sha is missing", async () => {
+  it("returns 2 when only one of --sha and --branch is provided", async () => {
     expect(await main(["--suite", "backend", "--store", "/tmp/s", "--branch", "main"])).toBe(2);
-  });
-
-  it("returns 2 when --branch is missing", async () => {
     expect(await main(["--suite", "backend", "--store", "/tmp/s", "--sha", "abc"])).toBe(2);
   });
 
@@ -244,5 +241,38 @@ describe("runStorePut", () => {
 
     const stored = readFileSync(join(storeDir, "frontend", "sha", "deadbeef", "lcov.info"), "utf8");
     expect(stored).toContain("SF:web/app.tsx");
+  });
+
+  it("preserves legacy store-put usage when sha and branch are omitted", async () => {
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:web/app.tsx\nDA:10,1\nend_of_record\n");
+
+    expect(
+      await main(["--suite", "frontend", "--store", storeDir, "--artifacts", artifactsDir]),
+    ).toBe(0);
+
+    const stored = readFileSync(join(storeDir, "frontend", "lcov.info"), "utf8");
+    expect(stored).toContain("SF:web/app.tsx");
+  });
+
+  it("accepts branch names with slashes", async () => {
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:web/app.tsx\nDA:10,1\nend_of_record\n");
+
+    expect(
+      await main([
+        "--suite",
+        "frontend",
+        "--store",
+        storeDir,
+        "--artifacts",
+        artifactsDir,
+        "--sha",
+        "deadbeef",
+        "--branch",
+        "feature/foo",
+      ]),
+    ).toBe(0);
+
+    const buf = await store.get("frontend", { branch: "feature/foo" });
+    expect(buf!.toString()).toContain("SF:web/app.tsx");
   });
 });

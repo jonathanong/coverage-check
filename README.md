@@ -52,7 +52,7 @@ The `--suite` flag on `check` tells the tool to use fresh `--artifacts` for the 
 
 ```text
 <prefix>/<suite>/sha/<sha>/lcov.info          # payload
-<prefix>/<suite>/branch/<branch>/latest.json  # pointer: { "sha": "...", "timestamp": "..." }
+<prefix>/<suite>/branch/<encoded-branch>/latest.json  # pointer: { "sha": "...", "timestamp": "..." }
 ```
 
 ### Suite store with filesystem
@@ -122,7 +122,7 @@ Rules are matched in order; the first match wins. Files in the diff not matched 
 | `--store-fs`     | —                      | Path to a filesystem suite store directory                                                   |
 | `--store`        | —                      | Alias for `--store-fs`                                                                       |
 | `--store-s3`     | —                      | S3 suite store spec: `<bucket>[/<prefix>]`                                                   |
-| `--branch`       | `"main"`               | Branch pointer to follow when reading from the store (no `/` or `\\`)                        |
+| `--branch`       | `"main"`               | Branch pointer to follow when reading from the store                                         |
 | `--suite`        | —                      | Name of the current suite (no `/` or `\\`); fresh artifacts override this suite in the store |
 | `--strip-prefix` | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                                |
 | `--pr`           | —                      | Pull request number for sticky comment                                                       |
@@ -137,12 +137,14 @@ Rules are matched in order; the first match wins. Files in the diff not matched 
 | `--store-fs`     | required\*             | Path to a filesystem suite store directory                    |
 | `--store`        | —                      | Alias for `--store-fs`                                        |
 | `--store-s3`     | required\*             | S3 suite store spec: `<bucket>[/<prefix>]`                    |
-| `--sha`          | required               | Git SHA to associate with this coverage payload               |
-| `--branch`       | required               | Branch name for the pointer (e.g. `main`)                     |
+| `--sha`          | —                      | Git SHA to associate with this coverage payload               |
+| `--branch`       | —                      | Branch name for the pointer (e.g. `main` or `feature/foo`)    |
 | `--artifacts`    | `./coverage-artifacts` | Directory to scan for `lcov.info` files                       |
 | `--strip-prefix` | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable) |
 
 \* Exactly one of `--store-fs` or `--store-s3` is required.
+
+When `--sha` and `--branch` are both provided, `store-put` writes a SHA-addressed payload and advances the branch pointer only if the incoming timestamp is not older than the current pointer. Omitting both flags preserves the legacy `<suite>/lcov.info` storage layout.
 
 ## Programmatic API
 
@@ -194,7 +196,7 @@ class MyCustomStore implements SuiteStore {
   async put(
     suite: string,
     lcov: Buffer,
-    meta: { sha: string; branch: string; timestamp?: string },
+    meta?: { sha?: string; branch?: string; timestamp?: string },
   ): Promise<void> {
     /* ... */
   }
