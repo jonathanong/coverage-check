@@ -15,13 +15,24 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
 
     if (line.startsWith("SF:")) {
       let path = line.slice(3);
+      let stripped = false;
       for (const prefix of stripPrefixes) {
         if (path.startsWith(prefix)) {
           path = path.slice(prefix.length);
+          stripped = true;
           break;
         }
       }
+
       path = normalizePath(path);
+
+      if (!stripped && (path.startsWith("/") || /^[A-Z]:\//i.test(path))) {
+        const match = path.match(/^.*?\/_?work\/([^/]+)\/\1\//);
+        if (match) {
+          path = path.slice(match[0].length);
+        }
+      }
+
       currentLines = result.get(path) ?? new Map();
       result.set(path, currentLines);
     } else if (line.startsWith("DA:") && currentLines !== null) {

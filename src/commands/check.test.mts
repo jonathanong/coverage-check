@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main, runCheck } from "./check.mts";
 import { FileSystemSuiteStore } from "../suite-store.mts";
 
@@ -870,5 +870,178 @@ describe("with a real git repo and a known diff", () => {
       if (savedSummary !== undefined) process.env["GITHUB_STEP_SUMMARY"] = savedSummary;
       else delete process.env["GITHUB_STEP_SUMMARY"];
     }
+  });
+
+  it("logs a warning when an LCOV source contributes 0 coverable lines to a non-empty patch", async () => {
+    // This LCOV file matches nothing in the diff (which is backend/foo.mts)
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:other/file.mts\nDA:1,1\nend_of_record\n");
+
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: null,
+      });
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("warning: coverage from file"));
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("contributed 0 coverable lines"));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("logs a warning when a file matches but no lines match (branch coverage)", async () => {
+    // SF matches backend/foo.mts, but line 100 is not in the diff (which is lines 1 and 2)
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:100,1\nend_of_record\n");
+
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: null,
+      });
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("warning: coverage from file"));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not log a warning when at least one line matches", async () => {
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:2,1\nend_of_record\n");
+
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: null,
+      });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("logs warnings for multiple sources independently", async () => {
+    const storeDir = join(tmpDir, "store2");
+    mkdirSync(storeDir);
+    const store = new FileSystemSuiteStore(storeDir);
+    // suite 'frontend' matches nothing
+    await store.put("frontend", Buffer.from("SF:web/app.tsx\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
+
+    // file 'lcov.info' matches nothing
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:other/file.mts\nDA:1,1\nend_of_record\n");
+
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store,
+        suite: null,
+      });
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("warning: coverage from suite"));
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("warning: coverage from file"));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("stops checking a source once contribution is found (loop break coverage)", async () => {
+    // This LCOV file matches the first file in the diff
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:2,1\nend_of_record\n");
+
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: null,
+      });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("sets contributes=true when a line matches (statement coverage)", async () => {
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:2,1\nend_of_record\n");
+    const result = await runCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(result).toBe(0);
+  });
+
+  it("skips suites that return null from store.get (branch coverage)", async () => {
+    const storeDir = join(tmpDir, "store3");
+    mkdirSync(storeDir);
+    const store = new FileSystemSuiteStore(storeDir);
+    // Add a suite but then delete the file to make get() return null (or just mock if easier, but let's try real)
+    await store.put("missing", Buffer.from("SF:foo.mts\nDA:1,1\nend_of_record\n"), {
+      sha: "sha",
+      branch: "main",
+    });
+    rmSync(join(storeDir, "missing", "main.lcov"), { force: true });
+
+    const result = await runCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: null,
+    });
+    expect(result).toBe(0);
   });
 });

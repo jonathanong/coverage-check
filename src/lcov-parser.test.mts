@@ -39,6 +39,30 @@ describe("parseLcov", () => {
     expect(result.get("web/lib/api/client.mts")?.get(5)).toBe(1);
   });
 
+  it("auto-strips GitHub Actions _work shape without explicit prefix", () => {
+    const lcov = `SF:/home/runner/work/repo-name/repo-name/src/api.mts\nDA:1,1\nend_of_record\n`;
+    const result = parseLcov(lcov);
+    expect(result.has("src/api.mts")).toBe(true);
+  });
+
+  it("auto-strips custom runner _work shape", () => {
+    const lcov = `SF:/mnt/data/_work/my-project/my-project/src/index.mts\nDA:1,1\nend_of_record\n`;
+    const result = parseLcov(lcov);
+    expect(result.has("src/index.mts")).toBe(true);
+  });
+
+  it("auto-strips Windows GitHub Actions _work shape", () => {
+    const lcov = `SF:D:\\a\\_work\\repo-name\\repo-name\\src\\api.mts\nDA:1,1\nend_of_record\n`;
+    const result = parseLcov(lcov);
+    expect(result.has("src/api.mts")).toBe(true);
+  });
+
+  it("does not strip absolute paths that do not match the _work pattern", () => {
+    const lcov = `SF:/absolute/path/to/file.mts\nDA:1,1\nend_of_record\n`;
+    const result = parseLcov(lcov);
+    expect(result.has("/absolute/path/to/file.mts")).toBe(true);
+  });
+
   it("normalizes Windows backslash separators", () => {
     const result = parseLcov(WINDOWS_LCOV);
     expect(result.has("backend/services/foo.mts")).toBe(true);
