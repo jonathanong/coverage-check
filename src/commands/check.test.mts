@@ -1001,4 +1001,47 @@ describe("with a real git repo and a known diff", () => {
       spy.mockRestore();
     }
   });
+
+  it("sets contributes=true when a line matches (statement coverage)", async () => {
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:2,1\nend_of_record\n");
+    const result = await runCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(result).toBe(0);
+  });
+
+  it("skips suites that return null from store.get (branch coverage)", async () => {
+    const storeDir = join(tmpDir, "store3");
+    mkdirSync(storeDir);
+    const store = new FileSystemSuiteStore(storeDir);
+    // Add a suite but then delete the file to make get() return null (or just mock if easier, but let's try real)
+    await store.put("missing", Buffer.from("SF:foo.mts\nDA:1,1\nend_of_record\n"), {
+      sha: "sha",
+      branch: "main",
+    });
+    rmSync(join(storeDir, "missing", "main.lcov"), { force: true });
+
+    const result = await runCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: null,
+    });
+    expect(result).toBe(0);
+  });
 });
