@@ -977,4 +977,28 @@ describe("with a real git repo and a known diff", () => {
       spy.mockRestore();
     }
   });
+
+  it("stops checking a source once contribution is found (loop break coverage)", async () => {
+    // This LCOV file matches the first file in the diff
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:2,1\nend_of_record\n");
+
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: null,
+      });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
