@@ -92,6 +92,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     for (const { name, lcov: sourceLcov } of parsedSources) {
       let contributes = false;
       for (const [file, changedLines] of diff) {
+        if (changedLines.size === 0) continue;
         const fileLines = sourceLcov.get(file);
         if (fileLines) {
           for (const lineNo of changedLines) {
