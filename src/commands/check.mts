@@ -41,6 +41,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   const stripPrefixes = buildStripPrefixes(args.stripPrefixes);
   const reports: LcovData[] = [];
   const suiteSources: SuiteSource[] = [];
+  const parsedSources: { name: string; lcov: LcovData }[] = [];
 
   if (args.store !== null) {
     const suites = await args.store.list();
@@ -51,6 +52,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
         const lcov = parseLcov(buf.toString("utf8"), stripPrefixes);
         reports.push(lcov);
         suiteSources.push({ suite, source: "store", lcov });
+        parsedSources.push({ name: `suite '${suite}'`, lcov });
       }
     }
   }
@@ -61,6 +63,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     const lcov = parseLcov(readFileSync(f, "utf8"), stripPrefixes);
     reports.push(lcov);
     freshLcovs.push(lcov);
+    parsedSources.push({ name: `file '${f}'`, lcov });
   }
   if (freshLcovs.length > 0) {
     suiteSources.push({
@@ -83,6 +86,29 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   } catch (err) {
     stderr(`coverage-check: git diff failed: ${err}`);
     return 2;
+  }
+
+  if (diff.size > 0) {
+    for (const { name, lcov: sourceLcov } of parsedSources) {
+      let contributes = false;
+      for (const [file, changedLines] of diff) {
+        const fileLines = sourceLcov.get(file);
+        if (fileLines) {
+          for (const lineNo of changedLines) {
+            if (fileLines.has(lineNo)) {
+              contributes = true;
+              break;
+            }
+          }
+        }
+        if (contributes) break;
+      }
+      if (!contributes) {
+        stderr(
+          `coverage-check: warning: coverage from ${name} contributed 0 coverable lines to the patch result. This may indicate a path prefix mismatch.`,
+        );
+      }
+    }
   }
 
   const { buckets, informational } = computePatchCoverage(diff, lcov, rules);
