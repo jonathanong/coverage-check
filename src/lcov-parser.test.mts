@@ -51,6 +51,12 @@ describe("parseLcov", () => {
     expect(result.has("src/index.mts")).toBe(true);
   });
 
+  it("auto-strips Windows GitHub Actions _work shape", () => {
+    const lcov = `SF:D:\\a\\_work\\repo-name\\repo-name\\src\\api.mts\nDA:1,1\nend_of_record\n`;
+    const result = parseLcov(lcov);
+    expect(result.has("src/api.mts")).toBe(true);
+  });
+
   it("does not strip absolute paths that do not match the _work pattern", () => {
     const lcov = `SF:/absolute/path/to/file.mts\nDA:1,1\nend_of_record\n`;
     const result = parseLcov(lcov);
