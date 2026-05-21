@@ -49,8 +49,12 @@ export function parseDiff(text: string): DiffLines {
   let currentLines: Set<number> | null = null;
   let inHeader = false;
 
-  for (const raw of text.split("\n")) {
-    const line = raw.trimEnd();
+  let pos = 0;
+  while (pos < text.length) {
+    let nl = text.indexOf("\n", pos);
+    if (nl === -1) nl = text.length;
+    const line = text.slice(pos, nl).trimEnd();
+    pos = nl + 1;
 
     // Only parse +++ as a file header when we are in the diff header block
     // (after `diff --git` / `---`). Without this guard a source line beginning
@@ -71,16 +75,40 @@ export function parseDiff(text: string): DiffLines {
         currentLines = null;
         continue;
       }
-      currentLines = result.get(path) ?? new Set();
-      result.set(path, currentLines);
+      currentLines = result.get(path);
+      if (currentLines === undefined) {
+        currentLines = new Set();
+        result.set(path, currentLines);
+      }
     } else if (line.startsWith("--- ")) {
       // ignore (part of diff header)
     } else if (line.startsWith("@@ ") && currentLines !== null) {
-      // @@ -old_start[,old_count] +new_start[,new_count] @@
-      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
-      if (!match) continue;
-      const newStart = parseInt(match[1]!, 10);
-      const newCount = match[2] !== undefined ? parseInt(match[2], 10) : 1;
+      // Avoid regex overhead for fast parsing of: @@ -old_start[,old_count] +new_start[,new_count] @@
+      const space1 = line.indexOf(" ", 3); // space after @@ -...
+      if (space1 === -1) continue;
+      const plusPos = space1 + 1;
+      if (line[plusPos] !== "+") continue;
+      const space2 = line.indexOf(" ", plusPos); // space after +...
+      if (space2 === -1) continue;
+
+      let newStart = 0;
+      let newCount = 0;
+      let commaPos = -1;
+      for (let i = plusPos + 1; i < space2; i++) {
+        if (line[i] === ",") {
+          commaPos = i;
+          break;
+        }
+      }
+
+      if (commaPos === -1) {
+        newStart = parseInt(line.slice(plusPos + 1, space2), 10);
+        newCount = 1;
+      } else {
+        newStart = parseInt(line.slice(plusPos + 1, commaPos), 10);
+        newCount = parseInt(line.slice(commaPos + 1, space2), 10);
+      }
+
       if (newCount === 0) continue;
       for (let i = 0; i < newCount; i++) {
         currentLines.add(newStart + i);
