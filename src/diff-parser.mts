@@ -75,11 +75,12 @@ export function parseDiff(text: string): DiffLines {
         currentLines = null;
         continue;
       }
-      currentLines = result.get(path);
-      if (currentLines === undefined) {
-        currentLines = new Set();
-        result.set(path, currentLines);
+      let existing = result.get(path);
+      if (existing === undefined) {
+        existing = new Set();
+        result.set(path, existing);
       }
+      currentLines = existing;
     } else if (line.startsWith("--- ")) {
       // ignore (part of diff header)
     } else if (line.startsWith("@@ ") && currentLines !== null) {

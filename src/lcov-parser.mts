@@ -37,11 +37,12 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
         }
       }
 
-      currentLines = result.get(path);
-      if (currentLines === undefined) {
-        currentLines = new Map();
-        result.set(path, currentLines);
+      let existing = result.get(path);
+      if (existing === undefined) {
+        existing = new Map();
+        result.set(path, existing);
       }
+      currentLines = existing;
     } else if (line.startsWith("DA:") && currentLines !== null) {
       const rest = line.slice(3);
       const comma = rest.indexOf(",");
