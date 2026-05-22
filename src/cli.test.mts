@@ -30,8 +30,8 @@ describe("cli subcommand dispatch", () => {
     expect(await main(["check", "--rules", rulesPath, "--artifacts", artifactsDir])).toBe(0);
   });
 
-  it("explicit store-put subcommand returns 2 when --suite is missing", async () => {
-    expect(await main(["store-put", "--store", "/tmp/store"])).toBe(2);
+  it("explicit store-put subcommand returns 2 when --store is missing", async () => {
+    expect(await main(["store-put", "--suite", "backend"])).toBe(2);
   });
 
   it("returns 2 for unknown subcommand", async () => {

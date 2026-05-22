@@ -1,6 +1,6 @@
 {
   "name": "coverage-check",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Patch-coverage gate: checks that newly added lines meet per-path coverage thresholds. Supports per-suite LCOV accumulation for conditional CI.",
   "license": "MIT",
   "author": "Jonathan Ong",
@@ -32,7 +32,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1048.0",
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.1.1",
+    "monocart-coverage-reports": "^2.12.11"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

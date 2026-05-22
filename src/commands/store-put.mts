@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov, toLcov } from "../lcov-merge.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
@@ -11,6 +12,7 @@ const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
 
 export type StorePutArgs = {
   suite: string;
+  suitePrefix: string;
   store: SuiteStore;
   artifacts: string;
   stripPrefixes: string[];
@@ -23,6 +25,7 @@ function parseArgs(argv: string[]): StorePutArgs {
   let storeS3: string | null = null;
   const args = {
     suite: "",
+    suitePrefix: "coverage-",
     artifacts: "./coverage-artifacts",
     stripPrefixes: [] as string[],
     sha: undefined as string | undefined,
@@ -42,6 +45,9 @@ function parseArgs(argv: string[]): StorePutArgs {
     switch (flag) {
       case "--suite":
         args.suite = val();
+        break;
+      case "--suite-prefix":
+        args.suitePrefix = val();
         break;
       case "--store":
       case "--store-fs":
@@ -67,7 +73,6 @@ function parseArgs(argv: string[]): StorePutArgs {
     }
   }
 
-  if (!args.suite) throw new Error("--suite is required");
   if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
   if (!storeFs && !storeS3) throw new Error("--store-fs/--store or --store-s3 is required");
   const hasSha = args.sha !== undefined;
@@ -75,7 +80,9 @@ function parseArgs(argv: string[]): StorePutArgs {
   if (hasSha !== hasBranch) {
     throw new Error("--sha and --branch must be provided together");
   }
-  assertSafePathComponent(args.suite, "suite");
+  if (args.suite) {
+    assertSafePathComponent(args.suite, "suite");
+  }
   if (args.sha !== undefined) assertSafePathComponent(args.sha, "sha");
   if (args.branch !== undefined && args.branch.length === 0) {
     throw new Error(`invalid branch: ${JSON.stringify(args.branch)}`);
@@ -93,14 +100,52 @@ export async function main(argv: string[]): Promise<number> {
     stderr(`coverage-check store-put: ${String(err)}`);
     return 2;
   }
-  return runStorePut(args);
+  if (args.suite) {
+    return runStorePut(args);
+  }
+  return runStorePutMultiSuite(args);
+}
+
+async function runStorePutMultiSuite(args: StorePutArgs): Promise<number> {
+  let subdirs: string[];
+  try {
+    subdirs = readdirSync(args.artifacts, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && e.name.startsWith(args.suitePrefix))
+      .map((e) => e.name);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      stdout(
+        `coverage-check store-put: artifacts directory not found at ${args.artifacts}; nothing to store`,
+      );
+      return 0;
+    }
+    throw err;
+  }
+
+  if (subdirs.length === 0) {
+    stdout(
+      `coverage-check store-put: no subdirectories matching prefix "${args.suitePrefix}" under ${args.artifacts}; nothing to store`,
+    );
+    return 0;
+  }
+
+  for (const subdirName of subdirs) {
+    const suite = subdirName.slice(args.suitePrefix.length);
+    const suiteDir = join(args.artifacts, subdirName);
+    const suiteArgs: StorePutArgs = { ...args, suite, artifacts: suiteDir };
+    const code = await runStorePut(suiteArgs);
+    if (code !== 0) return code;
+  }
+  return 0;
 }
 
 export async function runStorePut(args: StorePutArgs): Promise<number> {
   const lcovFiles = collectLcovFiles(args.artifacts);
   if (lcovFiles.length === 0) {
-    stderr(`coverage-check store-put: no lcov.info files found under ${args.artifacts}`);
-    return 2;
+    stdout(
+      `coverage-check store-put: no lcov.info files under ${args.artifacts}; skipping suite "${args.suite}"`,
+    );
+    return 0;
   }
 
   const stripPrefixes = buildStripPrefixes(args.stripPrefixes);
