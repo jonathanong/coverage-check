@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { buildCoverageHtml, parseCoverageHtmlArgs } from "./html.mts";
+import { describe, expect, it, vi } from "vitest";
+import { buildCoverageHtml, main, parseCoverageHtmlArgs } from "./html.mts";
+import { FileSystemSuiteStore } from "../suite-store.mts";
 
 function tmpRoot(): string {
   return mkdtempSync(path.join(tmpdir(), "coverage-html-"));
@@ -306,5 +307,117 @@ describe("coverage html", () => {
     expect(args.output).toBe("./out");
     expect(args.activeSuites).toEqual(["backend"]);
     expect(args.stripPrefixes).toEqual(["/workspace"]);
+  });
+
+  it("main() returns 2 and writes to stderr when an invalid flag is passed", async () => {
+    const stderrChunks: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((c: unknown) => {
+      stderrChunks.push(String(c));
+      return true;
+    });
+    try {
+      const code = await main(["--invalid-flag", "value"]);
+      expect(code).toBe(2);
+      expect(stderrChunks.join("")).toContain("unknown flag: --invalid-flag");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("main() writes warnings to stderr and returns 0 on success", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "coverage-html-main-"));
+    const outputDir = path.join(root, "coverage-html");
+    writeArtifact(root, "backend", "backend/a.mts", [[1, 1]]);
+
+    const stderrChunks: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((c: unknown) => {
+      stderrChunks.push(String(c));
+      return true;
+    });
+    try {
+      const code = await main([
+        "--artifacts",
+        path.join(root, "coverage-artifacts"),
+        "--output",
+        outputDir,
+        "--branch",
+        "main",
+      ]);
+      expect(code).toBe(0);
+      expect(stderrChunks.join("")).toContain("not configured");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("warns with 'could not be read' message when store throws on get()", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "coverage-html-store-err-"));
+    const outputDir = path.join(root, "coverage-html");
+    writeArtifact(root, "backend", "backend/a.mts", [[1, 1]]);
+    const storeDir = path.join(root, "coverage-store");
+    mkdirSync(storeDir, { recursive: true });
+
+    // Use a suite name with "/" which causes assertSafePathComponent in
+    // FileSystemSuiteStore.get() to throw, exercising the catch block.
+    const { warnings } = await buildCoverageHtml({
+      activeSuites: ["backend", "invalid/suite"],
+      artifacts: path.join(root, "coverage-artifacts"),
+      branch: "main",
+      output: outputDir,
+      storeFs: storeDir,
+      storeS3: null,
+      stripPrefixes: [],
+    });
+
+    expect(warnings.some((w) => w.includes("could not be read"))).toBe(true);
+  });
+
+  it("skips artifact dir named exactly 'coverage-' (empty suite name)", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "coverage-html-empty-suite-"));
+    const outputDir = path.join(root, "coverage-html");
+    // Create a dir named "coverage-" (empty suite name after stripping prefix)
+    mkdirSync(path.join(root, "coverage-artifacts", "coverage-"), { recursive: true });
+    writeFileSync(
+      path.join(root, "coverage-artifacts", "coverage-", "lcov.info"),
+      "TN:\nSF:other/a.mts\nDA:1,1\nend_of_record\n",
+    );
+    // Also create a valid suite so we get a report
+    writeArtifact(root, "backend", "backend/a.mts", [[1, 1]]);
+
+    const { warnings } = await buildCoverageHtml({
+      activeSuites: [],
+      artifacts: path.join(root, "coverage-artifacts"),
+      branch: "main",
+      output: outputDir,
+      storeFs: null,
+      storeS3: null,
+      stripPrefixes: [],
+    });
+
+    // The "coverage-" dir is skipped; the "backend" dir is processed
+    expect(warnings.some((w) => w.includes("not configured"))).toBe(true);
+  });
+
+  it("uses String(error) when a non-Error is thrown by the store", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "coverage-html-str-err-"));
+    const outputDir = path.join(root, "coverage-html");
+    writeArtifact(root, "backend", "backend/a.mts", [[1, 1]]);
+    mkdirSync(path.join(root, "coverage-store"), { recursive: true });
+
+    vi.spyOn(FileSystemSuiteStore.prototype, "get").mockRejectedValueOnce("plain string error");
+    try {
+      const { warnings } = await buildCoverageHtml({
+        activeSuites: ["backend", "web"],
+        artifacts: path.join(root, "coverage-artifacts"),
+        branch: "main",
+        output: outputDir,
+        storeFs: path.join(root, "coverage-store"),
+        storeS3: null,
+        stripPrefixes: [],
+      });
+      expect(warnings.some((w) => w.includes("plain string error"))).toBe(true);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

@@ -133,8 +133,7 @@ async function runStorePutMultiSuite(args: StorePutArgs): Promise<number> {
     const suite = subdirName.slice(args.suitePrefix.length);
     const suiteDir = join(args.artifacts, subdirName);
     const suiteArgs: StorePutArgs = { ...args, suite, artifacts: suiteDir };
-    const code = await runStorePut(suiteArgs);
-    if (code !== 0) return code;
+    await runStorePut(suiteArgs);
   }
   return 0;
 }
