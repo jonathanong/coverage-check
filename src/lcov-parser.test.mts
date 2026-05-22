@@ -108,3 +108,13 @@ end_of_record
     expect(result.get("web/foo.mts")?.get(1)).toBe(1);
   });
 });
+
+it("handles CRLF line endings without leaving trailing carriage returns", () => {
+  const lcovData = parseLcov("SF:foo.ts\r\nDA:1,1\r\nend_of_record\r\n");
+  expect(lcovData.has("foo.ts")).toBe(true);
+});
+
+it("handles end equals -1 (last line without newline)", () => {
+  const lcovData = parseLcov("SF:foo.ts\nDA:1,1\nend_of_record");
+  expect(lcovData.has("foo.ts")).toBe(true);
+});
