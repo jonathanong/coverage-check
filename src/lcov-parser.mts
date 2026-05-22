@@ -45,7 +45,7 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
         }
       }
 
-      currentLines = result.get(path);
+      currentLines = result.get(path) ?? null;
       if (!currentLines) {
         currentLines = new Map();
         result.set(path, currentLines);
