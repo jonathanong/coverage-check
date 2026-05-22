@@ -9,6 +9,7 @@ import { parseCoverageSummaryArgs as parseSummaryArgsDirectly } from "./summary/
 import { parseLcov } from "../lcov-parser.mts";
 import { buildStripPrefixes } from "../load-artifacts.mts";
 import type { CoverageSummary } from "./summary.mts";
+import { FileSystemSuiteStore } from "../suite-store.mts";
 
 function tmpRoot(): string {
   return mkdtempSync(path.join(tmpdir(), "coverage-summary-"));
@@ -325,6 +326,95 @@ describe("coverage summary", () => {
       rulesFile,
     );
     expect(groups.map((group) => group.folder)).toEqual(["README.md", "web"]);
+  });
+
+  it("drops rules whose glob starts at position 0 (no static prefix)", () => {
+    const root = tmpRoot();
+    const rulesFile = path.join(root, ".coverage-rules.yml");
+    // '**' has a glob at index 0 → staticPrefix="" → folder="" → null → skipped
+    writeFileSync(rulesFile, ["rules:", "  - paths: '**'", "  - paths: 'backend/**'"].join("\n"));
+    const groups = groupSuitesBySourceFolder(
+      [{ suite: "s", source: "current", lcov: makeLcov({ "backend/a.mts": [[1, 1]] }) }],
+      "main",
+      rulesFile,
+    );
+    // '**' rule produces no folder, so only 'backend' group appears
+    expect(groups.map((g) => g.folder)).toEqual(["backend"]);
+  });
+
+  it("handles array paths in a coverage rule", () => {
+    const root = tmpRoot();
+    const rulesFile = path.join(root, ".coverage-rules.yml");
+    writeFileSync(
+      rulesFile,
+      [
+        "rules:",
+        "  - paths:",
+        "      - 'backend/**'",
+        "      - 'web/**'",
+        "    patch_coverage_min: 0",
+      ].join("\n"),
+    );
+    const groups = groupSuitesBySourceFolder(
+      [
+        {
+          suite: "all",
+          source: "current",
+          lcov: makeLcov({ "backend/a.mts": [[1, 1]], "web/a.tsx": [[1, 1]] }),
+        },
+      ],
+      "main",
+      rulesFile,
+    );
+    expect(groups.map((g) => g.folder)).toContain("backend");
+    expect(groups.map((g) => g.folder)).toContain("web");
+  });
+
+  it("handles rules with no paths field (undefined paths)", () => {
+    const root = tmpRoot();
+    const rulesFile = path.join(root, ".coverage-rules.yml");
+    // A rule with no 'paths' key — paths is undefined → treated as empty → no group
+    writeFileSync(
+      rulesFile,
+      ["rules:", "  - patch_coverage_min: 90", "  - paths: 'backend/**'"].join("\n"),
+    );
+    const groups = groupSuitesBySourceFolder(
+      [{ suite: "s", source: "current", lcov: makeLcov({ "backend/a.mts": [[1, 1]] }) }],
+      "main",
+      rulesFile,
+    );
+    expect(groups.map((g) => g.folder)).toEqual(["backend"]);
+  });
+
+  it("treats a non-array rules field in the YAML as empty rules", () => {
+    const root = tmpRoot();
+    const rulesFile = path.join(root, ".coverage-rules.yml");
+    // rules is a string, not an array → falls through to [] → everything becomes "other"
+    writeFileSync(rulesFile, "rules: not-an-array\n");
+    const groups = groupSuitesBySourceFolder(
+      [{ suite: "s", source: "current", lcov: makeLcov({ "backend/a.mts": [[1, 1]] }) }],
+      "main",
+      rulesFile,
+    );
+    expect(groups.map((g) => g.folder)).toEqual(["other"]);
+  });
+
+  it("uses fallback branch when history suite has no branch property", () => {
+    const root = tmpRoot();
+    const rulesFile = writeCoverageRules(root, ["backend/**"]);
+    const groups = groupSuitesBySourceFolder(
+      [
+        {
+          suite: "backend-history",
+          source: "history",
+          // branch is intentionally undefined → falls back to the 'branch' arg
+          lcov: makeLcov({ "backend/a.mts": [[1, 1]] }),
+        },
+      ],
+      "fallback-main",
+      rulesFile,
+    );
+    expect(groups[0]?.branchesLabel).toBe("fallback-main");
   });
 
   it("warns when store is configured but active suites list is empty", async () => {
@@ -668,8 +758,8 @@ describe("parseCoverageSummaryArgs", () => {
   });
 
   it("--summary-file <path> sets summaryFile to the given path", () => {
-    const args = parseSummaryArgsDirectly(["--summary-file", "/tmp/step-summary.md"]);
-    expect(args.summaryFile).toBe("/tmp/step-summary.md");
+    const args = parseSummaryArgsDirectly(["--summary-file", "./step-summary.md"]);
+    expect(args.summaryFile).toBe("./step-summary.md");
   });
 
   it("default summaryFile is process.env.GITHUB_STEP_SUMMARY ?? null", () => {
@@ -722,18 +812,15 @@ describe("summary main()", () => {
     }
   });
 
-  it("writes markdown to --summary-file and returns 0", async () => {
+  it("writes markdown to stdout when --no-summary-file is given", async () => {
     const artifactsDir = path.join(tmpDir, "coverage-artifacts");
     mkdirSync(path.join(artifactsDir, "coverage-backend"), { recursive: true });
     writeFileSync(
       path.join(artifactsDir, "coverage-backend", "lcov.info"),
       "TN:\nSF:backend/a.mts\nDA:1,1\nend_of_record\n",
     );
-    const summaryFile = path.join(tmpDir, "step-summary.md");
-    writeFileSync(summaryFile, "");
 
     const code = await main(["--artifacts", artifactsDir, "--branch", "main", "--no-summary-file"]);
-    // Produces output to stdout; returns 0
     expect(code).toBe(0);
   });
 
@@ -816,5 +903,34 @@ describe("buildCoverageSummary historical store error", () => {
 
     expect(summary.warnings.some((w) => w.includes("could not be read"))).toBe(true);
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it("uses String(error) when a non-Error is thrown by the store", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "coverage-summary-str-err-"));
+    const artifactsDir = path.join(root, "coverage-artifacts");
+    mkdirSync(path.join(artifactsDir, "coverage-web"), { recursive: true });
+    writeFileSync(
+      path.join(artifactsDir, "coverage-web", "lcov.info"),
+      "TN:\nSF:web/a.tsx\nDA:1,1\nend_of_record\n",
+    );
+    const storeDir = path.join(root, "coverage-store");
+    mkdirSync(storeDir);
+
+    vi.spyOn(FileSystemSuiteStore.prototype, "get").mockRejectedValueOnce("plain string error");
+    try {
+      const summary = await buildCoverageSummary({
+        activeSuites: ["web", "backend"],
+        artifacts: artifactsDir,
+        branch: "main",
+        storeFs: storeDir,
+        storeS3: null,
+        summaryFile: null,
+        stripPrefixes: [],
+      });
+      expect(summary.warnings.some((w) => w.includes("plain string error"))).toBe(true);
+    } finally {
+      vi.restoreAllMocks();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

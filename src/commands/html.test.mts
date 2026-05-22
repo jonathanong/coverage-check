@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { buildCoverageHtml, main, parseCoverageHtmlArgs } from "./html.mts";
+import { FileSystemSuiteStore } from "../suite-store.mts";
 
 function tmpRoot(): string {
   return mkdtempSync(path.join(tmpdir(), "coverage-html-"));
@@ -395,5 +396,28 @@ describe("coverage html", () => {
 
     // The "coverage-" dir is skipped; the "backend" dir is processed
     expect(warnings.some((w) => w.includes("not configured"))).toBe(true);
+  });
+
+  it("uses String(error) when a non-Error is thrown by the store", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "coverage-html-str-err-"));
+    const outputDir = path.join(root, "coverage-html");
+    writeArtifact(root, "backend", "backend/a.mts", [[1, 1]]);
+    mkdirSync(path.join(root, "coverage-store"), { recursive: true });
+
+    vi.spyOn(FileSystemSuiteStore.prototype, "get").mockRejectedValueOnce("plain string error");
+    try {
+      const { warnings } = await buildCoverageHtml({
+        activeSuites: ["backend", "web"],
+        artifacts: path.join(root, "coverage-artifacts"),
+        branch: "main",
+        output: outputDir,
+        storeFs: path.join(root, "coverage-store"),
+        storeS3: null,
+        stripPrefixes: [],
+      });
+      expect(warnings.some((w) => w.includes("plain string error"))).toBe(true);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

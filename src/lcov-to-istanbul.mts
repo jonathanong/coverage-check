@@ -62,12 +62,11 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
       continue;
     }
     if (!filePath) continue;
-    const fileCov = coverage[filePath];
-    if (!fileCov) continue;
+    const fileCov = coverage[filePath]!; // filePath was validated against coverage when SF: was processed
 
     if (line.startsWith("DA:")) {
       const [lineNo, hits] = line.slice(3).split(",", 2);
-      const l = Number.parseInt(lineNo ?? "", 10);
+      const l = Number.parseInt(lineNo!, 10);
       const h = Number.parseInt(hits ?? "", 10);
       if (!Number.isInteger(l) || !Number.isInteger(h)) continue;
       const key = String(l);
@@ -75,7 +74,7 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
         fileCov.statementMap[key] = loc(l);
         fileCov.s[key] = h;
       } else {
-        fileCov.s[key] = (fileCov.s[key] ?? 0) + h;
+        fileCov.s[key] = (fileCov.s[key] as number) + h;
       }
     } else if (line.startsWith("FN:") || line.startsWith("FNL:")) {
       const rest = line.slice(line.startsWith("FNL:") ? 4 : 3);
@@ -101,11 +100,11 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
         fileCov.fnMap[key] = { name, decl: fnLoc, loc: fnLoc };
         fileCov.f[key] = h;
       } else {
-        fileCov.f[key] = (fileCov.f[key] ?? 0) + h;
+        fileCov.f[key] = (fileCov.f[key] as number) + h;
       }
     } else if (line.startsWith("BRDA:")) {
       const parts = line.slice(5).split(",", 4);
-      const lineNo = Number.parseInt(parts[0] ?? "", 10);
+      const lineNo = Number.parseInt(parts[0]!, 10);
       const blockId = parts[1] ?? "";
       const branchId = parts[2] ?? "";
       const taken = parts[3] === "-" ? 0 : Number.parseInt(parts[3] ?? "", 10);
@@ -130,11 +129,10 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
   // All records for a file are fully merged before sorting, so branchId
   // sets that differ across records are handled correctly.
   for (const [fp, blocks] of fileBranches) {
-    const fileCov = coverage[fp];
-    if (!fileCov) continue;
+    const fileCov = coverage[fp]!; // fp was validated against coverage when added to fileBranches
     for (const [blockKey, branches] of blocks) {
-      const lineNo = Number.parseInt(blockKey.split("-")[0] ?? "", 10);
-      const branchLoc = loc(Number.isInteger(lineNo) ? lineNo : 0);
+      const lineNo = Number.parseInt(blockKey.split("-")[0]!, 10); // blockKey is always "N-blockId"
+      const branchLoc = loc(lineNo);
       const sorted = [...branches.entries()].sort(([a], [b]) =>
         a.localeCompare(b, undefined, { numeric: true }),
       );

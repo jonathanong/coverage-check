@@ -140,12 +140,7 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/k.mts"]!.b)).toHaveLength(0);
   });
 
-  it("uses fallback loc(0) when blockKey split yields non-integer lineNo", () => {
-    // This exercises the Number.isInteger(lineNo) ? lineNo : 0 fallback in the flush section.
-    // We can reach it by having a blockKey whose first segment is not a valid number.
-    // However, blockKeys are always formed as `${lineNo}-${blockId}` after parseInt passes,
-    // so lineNo is always a valid integer there. The branchLoc fallback is thus defensive.
-    // Testing BRDA with valid data exercises lines 135-147.
+  it("converts BRDA records with numeric blockId to Istanbul branch arrays", () => {
     const lcov = buf(
       ["TN:", "SF:src/l.mts", "BRDA:99,blockA,0,7", "BRDA:99,blockA,1,3", "end_of_record"].join(
         "\n",
@@ -170,5 +165,46 @@ describe("lcovBufferToIstanbul", () => {
     );
     const coverage = lcovBufferToIstanbul(lcov, []);
     expect(coverage["src/i.mts"]!.s["1"]).toBe(5);
+  });
+
+  it("skips DA: line with no comma (missing hit count)", () => {
+    const lcov = buf(["TN:", "SF:src/da-nocomma.mts", "DA:5", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/da-nocomma.mts"]!.s)).toHaveLength(0);
+  });
+
+  it("skips FN: line with no comma (malformed)", () => {
+    const lcov = buf(["TN:", "SF:src/m.mts", "FN:nocolonhere", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/m.mts"]!.fnMap)).toHaveLength(0);
+  });
+
+  it("skips FN: line where start line is not an integer", () => {
+    const lcov = buf(["TN:", "SF:src/n.mts", "FN:notanumber,myFunc", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    // The FN line is skipped, but the file entry is still created
+    expect(Object.keys(coverage["src/n.mts"]!.fnMap)).toHaveLength(0);
+  });
+
+  it("handles FNA: as an alias for FNDA:", () => {
+    const lcov = buf(
+      ["TN:", "SF:src/o.mts", "FN:5,aliasFunc", "FNA:3,aliasFunc", "end_of_record"].join("\n"),
+    );
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(coverage["src/o.mts"]!.f["aliasFunc@5"]).toBe(3);
+  });
+
+  it("skips FNDA: line with no comma", () => {
+    const lcov = buf(["TN:", "SF:src/p.mts", "FNDA:nocolon", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/p.mts"]!.fnMap)).toHaveLength(0);
+  });
+
+  it("skips FNDA: line where hit count is not an integer", () => {
+    const lcov = buf(
+      ["TN:", "SF:src/q.mts", "FN:1,myFunc", "FNDA:notanumber,myFunc", "end_of_record"].join("\n"),
+    );
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/q.mts"]!.fnMap)).toHaveLength(0);
   });
 });

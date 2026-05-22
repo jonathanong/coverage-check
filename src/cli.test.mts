@@ -42,4 +42,17 @@ describe("cli subcommand dispatch", () => {
     // '--rules' starts with '-', so dispatch goes to check
     expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir])).toBe(0);
   });
+
+  it("html subcommand returns 0 with no artifacts", async () => {
+    const outputDir = join(tmpDir, "coverage-html");
+    expect(
+      await main(["html", "--artifacts", join(tmpDir, "nonexistent"), "--output", outputDir]),
+    ).toBe(0);
+  });
+
+  it("summary subcommand returns 0 with no artifacts", async () => {
+    expect(
+      await main(["summary", "--artifacts", join(tmpDir, "nonexistent"), "--no-summary-file"]),
+    ).toBe(0);
+  });
 });
