@@ -410,4 +410,40 @@ describe("multi-suite store-put", () => {
       ]),
     ).toBe(0);
   });
+
+  it("returns 0 and prints 'artifacts directory not found' when artifacts dir does not exist", async () => {
+    const nonexistentArtifacts = join(tmpDir, "does-not-exist");
+    const stdoutChunks: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((c: unknown) => {
+      stdoutChunks.push(String(c));
+      return true;
+    });
+    try {
+      expect(
+        await main([
+          "--store",
+          storeDir,
+          "--artifacts",
+          nonexistentArtifacts,
+          "--sha",
+          "abc",
+          "--branch",
+          "main",
+        ]),
+      ).toBe(0);
+      expect(stdoutChunks.join("")).toContain("artifacts directory not found");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("throws when readdirSync fails with a non-ENOENT error (e.g. ENOTDIR)", async () => {
+    // Point --artifacts at a file instead of a dir; readdirSync throws ENOTDIR which is re-thrown.
+    const notADir = join(tmpDir, "i-am-a-file.txt");
+    writeFileSync(notADir, "content");
+
+    await expect(
+      main(["--store", storeDir, "--artifacts", notADir, "--sha", "abc", "--branch", "main"]),
+    ).rejects.toThrow();
+  });
 });
