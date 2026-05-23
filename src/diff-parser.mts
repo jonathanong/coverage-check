@@ -1,4 +1,5 @@
 import type { DiffLines } from "./types.mts";
+import { forEachTrimmedLine } from "./for-each-line.mts";
 
 /**
  * Decodes a git C-string (inner content between surrounding double-quotes).
@@ -49,13 +50,7 @@ export function parseDiff(text: string): DiffLines {
   let currentLines: Set<number> | null = null;
   let inHeader = false;
 
-  let pos = 0;
-  while (pos < text.length) {
-    let nl = text.indexOf("\n", pos);
-    if (nl === -1) nl = text.length;
-    const line = text.slice(pos, nl).trimEnd();
-    pos = nl + 1;
-
+  forEachTrimmedLine(text, (line) => {
     // Only parse +++ as a file header when we are in the diff header block
     // (after `diff --git` / `---`). Without this guard a source line beginning
     // with `++ b/` would appear as `+++ b/…` in the diff and be misclassified.
@@ -73,7 +68,7 @@ export function parseDiff(text: string): DiffLines {
       const path = newFilePath;
       if (path === "dev/null") {
         currentLines = null;
-        continue;
+        return;
       }
       let existing = result.get(path);
       if (existing === undefined) {
@@ -86,11 +81,11 @@ export function parseDiff(text: string): DiffLines {
     } else if (line.startsWith("@@ ") && currentLines !== null) {
       // Avoid regex overhead for fast parsing of: @@ -old_start[,old_count] +new_start[,new_count] @@
       const space1 = line.indexOf(" ", 3); // space after @@ -...
-      if (space1 === -1) continue;
+      if (space1 === -1) return;
       const plusPos = space1 + 1;
-      if (line[plusPos] !== "+") continue;
+      if (line[plusPos] !== "+") return;
       const space2 = line.indexOf(" ", plusPos); // space after +...
-      if (space2 === -1) continue;
+      if (space2 === -1) return;
 
       let newStart = 0;
       let newCount = 0;
@@ -110,8 +105,8 @@ export function parseDiff(text: string): DiffLines {
         newCount = parseInt(line.slice(commaPos + 1, space2), 10);
       }
 
-      if (!Number.isFinite(newStart) || !Number.isFinite(newCount)) continue;
-      if (newStart <= 0 || newCount <= 0) continue;
+      if (!Number.isFinite(newStart) || !Number.isFinite(newCount)) return;
+      if (newStart <= 0 || newCount <= 0) return;
       for (let i = 0; i < newCount; i++) {
         currentLines.add(newStart + i);
       }
@@ -119,7 +114,7 @@ export function parseDiff(text: string): DiffLines {
       currentLines = null;
       inHeader = true;
     }
-  }
+  });
 
   return result;
 }

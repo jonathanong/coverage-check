@@ -1,4 +1,5 @@
 import type { LcovData } from "./types.mts";
+import { forEachTrimmedLine } from "./for-each-line.mts";
 
 /**
  * Parses LCOV text into a map of repo-root-relative file path → line → hit count.
@@ -10,13 +11,7 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
   const result: LcovData = new Map();
   let currentLines: Map<number, number> | null = null;
 
-  let pos = 0;
-  while (pos < text.length) {
-    let nl = text.indexOf("\n", pos);
-    if (nl === -1) nl = text.length;
-    const line = text.slice(pos, nl).trimEnd();
-    pos = nl + 1;
-
+  forEachTrimmedLine(text, (line) => {
     if (line.startsWith("SF:")) {
       let path = line.slice(3);
       let stripped = false;
@@ -46,16 +41,16 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
     } else if (line.startsWith("DA:") && currentLines !== null) {
       const rest = line.slice(3);
       const comma = rest.indexOf(",");
-      if (comma === -1) continue;
+      if (comma === -1) return;
       const lineNo = parseInt(rest.slice(0, comma), 10);
       const hits = parseInt(rest.slice(comma + 1), 10);
-      if (!Number.isFinite(lineNo) || !Number.isFinite(hits)) continue;
+      if (!Number.isFinite(lineNo) || !Number.isFinite(hits)) return;
       const prev = currentLines.get(lineNo) ?? 0;
       currentLines.set(lineNo, prev + hits);
     } else if (line === "end_of_record") {
       currentLines = null;
     }
-  }
+  });
 
   return result;
 }

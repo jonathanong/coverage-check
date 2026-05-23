@@ -40,6 +40,11 @@ diff --git a/backend/b.mts b/backend/b.mts
 +new line
 `;
 
+function expectNoAddedLines(diff: string): void {
+  const lines = parseDiff(diff).get("backend/x.mts");
+  expect(!lines || lines.size === 0).toBe(true);
+}
+
 describe("parseDiff", () => {
   it("parses added lines from a hunk", () => {
     const result = parseDiff(SIMPLE_DIFF);
@@ -147,9 +152,7 @@ diff --git a/backend/x.mts b/backend/x.mts
 @@ -1,1 +x,2 @@
 +new line
 `;
-    const result = parseDiff(diff);
-    const lines = result.get("backend/x.mts");
-    expect(!lines || lines.size === 0).toBe(true);
+    expectNoAddedLines(diff);
   });
 
   it("handles diffs without trailing newline", () => {
@@ -191,9 +194,7 @@ diff --git a/backend/x.mts b/backend/x.mts
 @@bad
 +new line
 `;
-    const result = parseDiff(diff);
-    const lines = result.get("backend/x.mts");
-    expect(!lines || lines.size === 0).toBe(true);
+    expectNoAddedLines(diff);
   });
 
   it("skips hunk headers missing the trailing context space", () => {
@@ -204,9 +205,7 @@ diff --git a/backend/x.mts b/backend/x.mts
 @@ -1,1 +2
 +new line
 `;
-    const result = parseDiff(diff);
-    const lines = result.get("backend/x.mts");
-    expect(!lines || lines.size === 0).toBe(true);
+    expectNoAddedLines(diff);
   });
 
   it("handles git-quoted paths (core.quotePath=true)", () => {
