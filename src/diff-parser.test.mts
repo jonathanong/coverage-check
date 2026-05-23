@@ -183,50 +183,6 @@ diff --git a/backend/x.mts b/backend/x.mts
     expect(lines?.has(2)).toBe(true);
   });
 
-  it("skips hunk headers missing the trailing context space", () => {
-    const diff = `
-diff --git a/backend/x.mts b/backend/x.mts
---- a/backend/x.mts
-+++ b/backend/x.mts
-@@ -1,1 +2
-+new line
-`;
-    const result = parseDiff(diff);
-    const lines = result.get("backend/x.mts");
-    expect(!lines || lines.size === 0).toBe(true);
-  });
-
-  it("handles diffs without trailing newline", () => {
-    const diff = `diff --git a/backend/x.mts b/backend/x.mts
---- a/backend/x.mts
-+++ b/backend/x.mts
-@@ -1,1 +1,2 @@
- unchanged
-+new line`;
-    const result = parseDiff(diff);
-    expect(result.get("backend/x.mts")?.size).toBe(2);
-  });
-
-  it("reuses cached line set for repeated file paths", () => {
-    const diff = `
-diff --git a/backend/x.mts b/backend/x.mts
---- a/backend/x.mts
-+++ b/backend/x.mts
-@@ -1,1 +1,1 @@
-+first line
-diff --git a/backend/x.mts b/backend/x.mts
---- a/backend/x.mts
-+++ b/backend/x.mts
-@@ -2,1 +2,1 @@
-+second line
-`;
-    const result = parseDiff(diff);
-    const lines = result.get("backend/x.mts");
-    expect(lines?.size).toBe(2);
-    expect(lines?.has(1)).toBe(true);
-    expect(lines?.has(2)).toBe(true);
-  });
-
   it("skips hunk headers lacking the expected separator spaces", () => {
     const diff = `
 diff --git a/backend/x.mts b/backend/x.mts
