@@ -176,3 +176,12 @@ describe("decodeGitCString", () => {
     expect(decodeGitCString("\\z")).toBe("\\z");
   });
 });
+
+describe("parseDiff with CRLF and trailing spaces", () => {
+  it("correctly handles CRLF and trailing spaces", () => {
+    const rawDiff =
+      "diff --git a/foo b/foo\r\n--- a/foo\r\n+++ b/foo\r\n@@ -1,1 +1,1 @@\r\n-foo \r\n+bar \t\r\n";
+    const res = parseDiff(rawDiff);
+    expect([...(res.get("foo") ?? [])]).toEqual([1]);
+  });
+});

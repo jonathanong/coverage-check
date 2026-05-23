@@ -208,3 +208,12 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/q.mts"]!.fnMap)).toHaveLength(0);
   });
 });
+
+describe("CRLF line endings", () => {
+  it("handles CRLF line endings correctly", () => {
+    const lcov = buf("SF:foo.ts\r\nDA:1,1\r\nend_of_record\r\n");
+    const cov = lcovBufferToIstanbul(lcov, []);
+    expect(cov["foo.ts"]).toBeDefined();
+    expect(cov["foo.ts"].s["1"]).toBe(1);
+  });
+});
