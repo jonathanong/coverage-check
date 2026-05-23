@@ -185,3 +185,11 @@ describe("parseDiff with CRLF and trailing spaces", () => {
     expect([...(res.get("foo") ?? [])]).toEqual([1]);
   });
 });
+
+describe("parseDiff with text not ending in newline", () => {
+  it("handles text not ending in newline", () => {
+    const rawDiff = "diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1,1 +1,1 @@\n-foo\n+bar";
+    const res = parseDiff(rawDiff);
+    expect([...(res.get("foo") ?? [])]).toEqual([1]);
+  });
+});

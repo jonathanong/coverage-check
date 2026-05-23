@@ -217,3 +217,12 @@ describe("CRLF line endings", () => {
     expect(cov["foo.ts"].s["1"]).toBe(1);
   });
 });
+
+describe("LCOV not ending in newline", () => {
+  it("handles LCOV not ending in newline", () => {
+    const lcov = buf("SF:foo.ts\nDA:1,1\nend_of_record");
+    const cov = lcovBufferToIstanbul(lcov, []);
+    expect(cov["foo.ts"]).toBeDefined();
+    expect(cov["foo.ts"].s["1"]).toBe(1);
+  });
+});
