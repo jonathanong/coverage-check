@@ -110,7 +110,8 @@ export function parseDiff(text: string): DiffLines {
         newCount = parseInt(line.slice(commaPos + 1, space2), 10);
       }
 
-      if (newCount === 0) continue;
+      if (!Number.isFinite(newStart) || !Number.isFinite(newCount)) continue;
+      if (newStart <= 0 || newCount <= 0) continue;
       for (let i = 0; i < newCount; i++) {
         currentLines.add(newStart + i);
       }

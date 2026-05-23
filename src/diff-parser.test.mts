@@ -139,6 +139,19 @@ diff --git a/backend/x.mts b/backend/x.mts
     expect(!lines || lines.size === 0).toBe(true);
   });
 
+  it("skips malformed hunk headers with non-numeric coordinates", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ bad start +x,2 @@
++new line
+`;
+    const result = parseDiff(diff);
+    const lines = result.get("backend/x.mts");
+    expect(!lines || lines.size === 0).toBe(true);
+  });
+
   it("handles git-quoted paths (core.quotePath=true)", () => {
     const diff = `
 diff --git "a/backend/caf\\303\\251.mts" "b/backend/caf\\303\\251.mts"
