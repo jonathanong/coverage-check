@@ -208,6 +208,17 @@ diff --git a/backend/x.mts b/backend/x.mts
     expectNoAddedLines(diff);
   });
 
+  it("hits hunk header parser when no trailing space exists for space1", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ x
++new line
+`;
+    expectNoAddedLines(diff);
+  });
+
   it("handles git-quoted paths (core.quotePath=true)", () => {
     const diff = `
 diff --git "a/backend/caf\\303\\251.mts" "b/backend/caf\\303\\251.mts"
