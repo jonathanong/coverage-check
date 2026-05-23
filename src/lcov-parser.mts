@@ -20,10 +20,7 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
     if (end === -1) end = text.length;
 
     let lineStart = start;
-    let lineEnd = end;
-    if (lineEnd > lineStart && text[lineEnd - 1] === "\r") {
-      lineEnd--;
-    }
+    const lineEnd = trimLineEnd(text, lineStart, end);
 
     if (text.startsWith("SF:", lineStart)) {
       let path = text.slice(lineStart + 3, lineEnd);
@@ -68,6 +65,18 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
   }
 
   return result;
+}
+
+function trimLineEnd(text: string, start: number, end: number): number {
+  while (end > start) {
+    const charCode = text.charCodeAt(end - 1);
+    if (charCode === 32 || charCode === 9 || charCode === 13) {
+      end--;
+      continue;
+    }
+    break;
+  }
+  return end;
 }
 
 function normalizePath(p: string): string {

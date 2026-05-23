@@ -118,3 +118,15 @@ it("handles end equals -1 (last line without newline)", () => {
   const lcovData = parseLcov("SF:foo.ts\nDA:1,1\nend_of_record");
   expect(lcovData.has("foo.ts")).toBe(true);
 });
+
+it("trims trailing whitespace in SF and end_of_record lines", () => {
+  const lcovData = parseLcov("SF:web/foo.ts  \nDA:1,1\nend_of_record   \r\n");
+  expect(lcovData.has("web/foo.ts")).toBe(true);
+  expect(lcovData.get("web/foo.ts")?.get(1)).toBe(1);
+});
+
+it("handles CRLF markers with trailing whitespace", () => {
+  const lcovData = parseLcov("SF:foo.ts\r\nDA:1,1\r\nend_of_record  \r\n");
+  expect(lcovData.has("foo.ts")).toBe(true);
+  expect(lcovData.get("foo.ts")?.get(1)).toBe(1);
+});
