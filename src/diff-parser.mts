@@ -49,6 +49,12 @@ export function parseDiff(text: string): DiffLines {
   let currentLines: Set<number> | null = null;
   let inHeader = false;
 
+  const toNumericHeader = (value: string): number | null => {
+    if (!/^\d+$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  };
+
   let start = 0;
   while (start < text.length) {
     let end = text.indexOf("\n", start);
@@ -92,10 +98,11 @@ export function parseDiff(text: string): DiffLines {
       // ignore (part of diff header)
     } else if (line.startsWith("@@ ") && currentLines !== null) {
       // @@ -old_start[,old_count] +new_start[,new_count] @@
-      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+      const match = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))?(?:\s.*)? @@/);
       if (!match) continue;
-      const newStart = parseInt(match[1]!, 10);
-      const newCount = match[2] !== undefined ? parseInt(match[2], 10) : 1;
+      const newStart = toNumericHeader(match[3]!);
+      const newCount = match[4] !== undefined ? toNumericHeader(match[4]) : 1;
+      if (newStart === null || newCount === null) continue;
       if (newCount === 0) continue;
       for (let i = 0; i < newCount; i++) {
         currentLines.add(newStart + i);
