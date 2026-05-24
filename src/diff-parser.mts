@@ -1,5 +1,4 @@
 import type { DiffLines } from "./types.mts";
-import { forEachTextLine } from "./line-scanner.mts";
 
 /**
  * Decodes a git C-string (inner content between surrounding double-quotes).
@@ -50,68 +49,62 @@ export function parseDiff(text: string): DiffLines {
   let currentLines: Set<number> | null = null;
   let inHeader = false;
 
-  const toNumericHeader = (value: string): number | null => {
-    if (!/^\d+$/.test(value)) return null;
-    const parsed = Number(value);
-    return Number.isSafeInteger(parsed) ? parsed : null;
-  };
+  let start = 0;
+  while (start < text.length) {
+    let end = text.indexOf("\n", start);
+    if (end === -1) end = text.length;
 
-  forEachTextLine(
-    text,
-    (line) => {
-      const trimmedLine = line.trimEnd();
-
-      // Only parse +++ as a file header when we are in the diff header block
-      // (after `diff --git` / `---`). Without this guard a source line beginning
-      // with `++ b/` would appear as `+++ b/…` in the diff and be misclassified.
-      let newFilePath: string | null = null;
-      if (inHeader) {
-        if (trimmedLine.startsWith("+++ b/")) {
-          newFilePath = trimmedLine.slice(6);
-        } else if (trimmedLine.startsWith('+++ "b/') && trimmedLine.endsWith('"')) {
-          newFilePath = decodeGitCString(trimmedLine.slice(5, -1)).slice(2);
-        }
+    let lineEnd = end;
+    while (lineEnd > start) {
+      const charCode = text.charCodeAt(lineEnd - 1);
+      if (charCode === 32 || charCode === 9 || charCode === 13) {
+        lineEnd--;
+        continue;
       }
+      break;
+    }
 
-      if (newFilePath !== null) {
-        inHeader = false;
-        const path = newFilePath;
-        if (path === "dev/null") {
-          currentLines = null;
-          return;
-        }
-        currentLines = result.get(path) ?? new Set();
-        result.set(path, currentLines);
-        return;
+    const line = text.slice(start, lineEnd);
+    start = end + 1;
+
+    // Only parse +++ as a file header when we are in the diff header block
+    // (after `diff --git` / `---`). Without this guard a source line beginning
+    // with `++ b/` would appear as `+++ b/…` in the diff and be misclassified.
+    let newFilePath: string | null = null;
+    if (inHeader) {
+      if (line.startsWith("+++ b/")) {
+        newFilePath = line.slice(6);
+      } else if (line.startsWith('+++ "b/') && line.endsWith('"')) {
+        newFilePath = decodeGitCString(line.slice(5, -1)).slice(2);
       }
+    }
 
-      if (trimmedLine.startsWith("--- ")) {
-        // ignore (part of diff header)
-        return;
-      }
-
-      if (trimmedLine.startsWith("@@ ") && currentLines !== null) {
-        // @@ -old_start[,old_count] +new_start,[new_count] @@
-        const match = trimmedLine.match(
-          /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))?(?:\s.*)? @@/,
-        );
-        if (!match) return;
-        const newStart = toNumericHeader(match[3]!);
-        const newCount = match[4] !== undefined ? toNumericHeader(match[4]) : 1;
-        if (newStart === null || newCount === null || newCount === 0) return;
-        for (let i = 0; i < newCount; i++) {
-          currentLines.add(newStart + i);
-        }
-        return;
-      }
-
-      if (trimmedLine.startsWith("diff --git ")) {
+    if (newFilePath !== null) {
+      inHeader = false;
+      const path = newFilePath;
+      if (path === "dev/null") {
         currentLines = null;
-        inHeader = true;
+        continue;
       }
-    },
-    (line) => line,
-  );
+      currentLines = result.get(path) ?? new Set();
+      result.set(path, currentLines);
+    } else if (line.startsWith("--- ")) {
+      // ignore (part of diff header)
+    } else if (line.startsWith("@@ ") && currentLines !== null) {
+      // @@ -old_start[,old_count] +new_start[,new_count] @@
+      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+      if (!match) continue;
+      const newStart = parseInt(match[1]!, 10);
+      const newCount = match[2] !== undefined ? parseInt(match[2], 10) : 1;
+      if (newCount === 0) continue;
+      for (let i = 0; i < newCount; i++) {
+        currentLines.add(newStart + i);
+      }
+    } else if (line.startsWith("diff --git ")) {
+      currentLines = null;
+      inHeader = true;
+    }
+  }
 
   return result;
 }
