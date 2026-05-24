@@ -1,4 +1,5 @@
 import type { LcovData } from "./types.mts";
+import { trimLineEnd } from "./for-each-line.mts";
 /**
  * Parses LCOV text into a map of repo-root-relative file path → line → hit count.
  *
@@ -62,18 +63,6 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
   }
 
   return result;
-}
-
-function trimLineEnd(text: string, start: number, end: number): number {
-  while (end > start) {
-    const charCode = text.charCodeAt(end - 1);
-    if (charCode === 32 || charCode === 9 || charCode === 13) {
-      end--;
-      continue;
-    }
-    break;
-  }
-  return end;
 }
 
 function normalizePath(p: string): string {

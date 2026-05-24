@@ -18,7 +18,7 @@ export function forEachTrimmedLine(
   }
 }
 
-function trimLineEnd(text: string, start: number, end: number): number {
+export function trimLineEnd(text: string, start: number, end: number): number {
   while (end > start) {
     const charCode = text.charCodeAt(end - 1);
     if (charCode === 32 || charCode === 9 || charCode === 13) {

@@ -155,6 +155,28 @@ diff --git a/backend/x.mts b/backend/x.mts
     expectNoAddedLines(diff);
   });
 
+  it("skips hunk headers with malformed old-side coordinates", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -a,1 +1,2 @@
++new line
+`;
+    expectNoAddedLines(diff);
+  });
+
+  it("requires the hunk header to end with the closing @@ marker", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -1,1 +1,2 @
++new line
+`;
+    expectNoAddedLines(diff);
+  });
+
   it("skips hunk headers with non-numeric new count in mixed token", () => {
     const diff = `
 diff --git a/backend/x.mts b/backend/x.mts

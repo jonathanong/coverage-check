@@ -91,6 +91,24 @@ export function parseDiff(text: string): DiffLines {
       if (line[plusPos] !== "+") return;
       const space2 = line.indexOf(" ", plusPos); // space after +...
       if (space2 === -1) return;
+      if (line[space2 + 1] !== "@" || line[space2 + 2] !== "@") return;
+
+      const oldRange = line.slice(3, space1);
+      if (!oldRange.startsWith("-")) return;
+      const commaPosOld = oldRange.indexOf(",");
+      let oldCount = 0;
+      if (commaPosOld === -1) {
+        const parsedOldStart = toNumericHeader(oldRange.slice(1));
+        if (parsedOldStart === null) return;
+        oldCount = 1;
+      } else {
+        const parsedOldStart = toNumericHeader(oldRange.slice(1, commaPosOld));
+        const parsedOldCount = toNumericHeader(oldRange.slice(commaPosOld + 1));
+        if (parsedOldStart === null || parsedOldCount === null) return;
+        oldCount = parsedOldCount;
+      }
+      if (!Number.isFinite(oldCount)) return;
+      if (oldCount < 0) return;
 
       let newStart = 0;
       let newCount = 0;
