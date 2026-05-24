@@ -140,6 +140,14 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/k.mts"]!.b)).toHaveLength(0);
   });
 
+  it("skips unrecognized line types when inside an SF block", () => {
+    const lcov = buf(["TN:", "SF:src/unrecognized.mts", "ZZZ:ignored", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(coverage["src/unrecognized.mts"]?.s).toEqual({});
+    expect(coverage["src/unrecognized.mts"]?.fnMap).toEqual({});
+    expect(coverage["src/unrecognized.mts"]?.b).toEqual({});
+  });
+
   it("converts BRDA records with numeric blockId to Istanbul branch arrays", () => {
     const lcov = buf(
       ["TN:", "SF:src/l.mts", "BRDA:99,blockA,0,7", "BRDA:99,blockA,1,3", "end_of_record"].join(

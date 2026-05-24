@@ -40,6 +40,11 @@ diff --git a/backend/b.mts b/backend/b.mts
 +new line
 `;
 
+function expectNoAddedLines(diff: string): void {
+  const lines = parseDiff(diff).get("backend/x.mts");
+  expect(!lines || lines.size === 0).toBe(true);
+}
+
 describe("parseDiff", () => {
   it("parses added lines from a hunk", () => {
     const result = parseDiff(SIMPLE_DIFF);
@@ -137,6 +142,39 @@ diff --git a/backend/x.mts b/backend/x.mts
     // malformed @@ line is skipped; no lines added
     const lines = result.get("backend/x.mts");
     expect(!lines || lines.size === 0).toBe(true);
+  });
+
+  it("skips malformed hunk headers with non-numeric old-side values", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -x +1,2 @@
++new line
+`;
+    expectNoAddedLines(diff);
+  });
+
+  it("skips hunk headers with malformed old-side counts", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -1,x +1,2 @@
++new line
+`;
+    expectNoAddedLines(diff);
+  });
+
+  it("skips hunk headers missing the closing @@ marker", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -1 +1,2 @
++new line
+`;
+    expectNoAddedLines(diff);
   });
 
   it("handles git-quoted paths (core.quotePath=true)", () => {
