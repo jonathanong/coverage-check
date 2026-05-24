@@ -2,17 +2,29 @@ import type { LcovData } from "./types.mts";
 
 /** Merges multiple LcovData maps by summing hit counts per file per line. */
 export function mergeLcov(reports: LcovData[]): LcovData {
+  if (reports.length === 0) return new Map();
+  if (reports.length === 1) {
+    const merged: LcovData = new Map();
+    for (const [file, lines] of reports[0]!) {
+      merged.set(file, new Map(lines));
+    }
+    return merged;
+  }
+
   const merged: LcovData = new Map();
 
   for (const report of reports) {
     for (const [file, lines] of report) {
       let target = merged.get(file);
       if (target === undefined) {
-        target = new Map();
+        // Optimization: Use `new Map(lines)` instead of copying elements one by one.
+        // This skips redundant iterations and reduces Map insertion overhead.
+        target = new Map(lines);
         merged.set(file, target);
-      }
-      for (const [lineNo, hits] of lines) {
-        target.set(lineNo, (target.get(lineNo) ?? 0) + hits);
+      } else {
+        for (const [lineNo, hits] of lines) {
+          target.set(lineNo, (target.get(lineNo) ?? 0) + hits);
+        }
       }
     }
   }
