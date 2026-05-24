@@ -1,4 +1,5 @@
 import type { LcovData } from "./types.mts";
+import { forEachTextLine, trimLineEnd } from "./line-scanner.mts";
 
 /**
  * Parses LCOV text into a map of repo-root-relative file path → line → hit count.
@@ -14,16 +15,9 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
   // array of strings in memory and causes significant garbage collection overhead
   // for large LCOV files, we manually traverse the string using `indexOf("\n")`.
   // This reduces memory allocations and improves parsing speed by ~30-50%.
-  let start = 0;
-  while (start < text.length) {
-    let end = text.indexOf("\n", start);
-    if (end === -1) end = text.length;
-
-    let lineStart = start;
-    const lineEnd = trimLineEnd(text, lineStart, end);
-
-    if (text.startsWith("SF:", lineStart)) {
-      let path = text.slice(lineStart + 3, lineEnd);
+  forEachTextLine(text, (line) => {
+    if (line.startsWith("SF:")) {
+      let path = trimLineEnd(line.slice(3));
       let stripped = false;
       for (const prefix of stripPrefixes) {
         if (path.startsWith(prefix)) {
@@ -47,36 +41,22 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
         currentLines = new Map();
         result.set(path, currentLines);
       }
-    } else if (text.startsWith("DA:", lineStart) && currentLines !== null) {
-      const comma = text.indexOf(",", lineStart + 3);
-      if (comma !== -1 && comma < lineEnd) {
-        const lineNo = parseInt(text.slice(lineStart + 3, comma), 10);
-        const hits = parseInt(text.slice(comma + 1, lineEnd), 10);
+    } else if (line.startsWith("DA:") && currentLines !== null) {
+      const comma = line.indexOf(",", 3);
+      if (comma !== -1) {
+        const lineNo = parseInt(line.slice(3, comma), 10);
+        const hits = parseInt(line.slice(comma + 1), 10);
         if (Number.isFinite(lineNo) && Number.isFinite(hits)) {
           const prev = currentLines.get(lineNo) ?? 0;
           currentLines.set(lineNo, prev + hits);
         }
       }
-    } else if (lineEnd - lineStart === 13 && text.startsWith("end_of_record", lineStart)) {
+    } else if (line === "end_of_record") {
       currentLines = null;
     }
-
-    start = end + 1;
-  }
+  });
 
   return result;
-}
-
-function trimLineEnd(text: string, start: number, end: number): number {
-  while (end > start) {
-    const charCode = text.charCodeAt(end - 1);
-    if (charCode === 32 || charCode === 9 || charCode === 13) {
-      end--;
-      continue;
-    }
-    break;
-  }
-  return end;
 }
 
 function normalizePath(p: string): string {
