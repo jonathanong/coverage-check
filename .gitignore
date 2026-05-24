@@ -3,3 +3,4 @@ coverage/
 dist/
 test-results/
 *.lcov
+.jules/
