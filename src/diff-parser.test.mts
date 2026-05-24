@@ -155,6 +155,17 @@ diff --git a/backend/x.mts b/backend/x.mts
     expectNoAddedLines(diff);
   });
 
+  it("skips hunk headers with non-numeric new count in mixed token", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -1 +1x,2 @@
++new line
+`;
+    expectNoAddedLines(diff);
+  });
+
   it("handles diffs without trailing newline", () => {
     const diff = `diff --git a/backend/x.mts b/backend/x.mts
 --- a/backend/x.mts

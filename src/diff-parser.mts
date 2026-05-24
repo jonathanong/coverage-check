@@ -49,6 +49,11 @@ export function parseDiff(text: string): DiffLines {
   const result: DiffLines = new Map();
   let currentLines: Set<number> | null = null;
   let inHeader = false;
+  const toNumericHeader = (value: string): number | null => {
+    if (!/^\d+$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  };
 
   forEachTrimmedLine(text, (line) => {
     // Only parse +++ as a file header when we are in the diff header block
@@ -98,11 +103,16 @@ export function parseDiff(text: string): DiffLines {
       }
 
       if (commaPos === -1) {
-        newStart = parseInt(line.slice(plusPos + 1, space2), 10);
+        const parsedStart = toNumericHeader(line.slice(plusPos + 1, space2));
+        if (parsedStart === null) return;
+        newStart = parsedStart;
         newCount = 1;
       } else {
-        newStart = parseInt(line.slice(plusPos + 1, commaPos), 10);
-        newCount = parseInt(line.slice(commaPos + 1, space2), 10);
+        const parsedStart = toNumericHeader(line.slice(plusPos + 1, commaPos));
+        const parsedCount = toNumericHeader(line.slice(commaPos + 1, space2));
+        if (parsedStart === null || parsedCount === null) return;
+        newStart = parsedStart;
+        newCount = parsedCount;
       }
 
       if (!Number.isFinite(newStart) || !Number.isFinite(newCount)) return;
