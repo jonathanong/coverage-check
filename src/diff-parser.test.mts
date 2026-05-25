@@ -139,6 +139,21 @@ diff --git a/backend/x.mts b/backend/x.mts
     expect(!lines || lines.size === 0).toBe(true);
   });
 
+  it("handles diffs with Windows style CRLF and trailing spaces", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts\r
+--- a/backend/x.mts\r
++++ b/backend/x.mts\t \r
+@@ -1,1 +1,2 @@\r
+-old\r
++new\r
+`;
+    const result = parseDiff(diff);
+    const lines = result.get("backend/x.mts");
+    expect(lines?.has(1)).toBe(true);
+    expect(lines?.has(2)).toBe(true);
+  });
+
   it("handles git-quoted paths (core.quotePath=true)", () => {
     const diff = `
 diff --git "a/backend/caf\\303\\251.mts" "b/backend/caf\\303\\251.mts"
