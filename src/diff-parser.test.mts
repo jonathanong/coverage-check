@@ -139,6 +139,53 @@ diff --git a/backend/x.mts b/backend/x.mts
     expect(!lines || lines.size === 0).toBe(true);
   });
 
+  it("skips malformed hunk header lines (missing space after + section)", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -1 +1@@
++new line
+`;
+    const result = parseDiff(diff);
+    const lines = result.get("backend/x.mts");
+    expect(!lines || lines.size === 0).toBe(true);
+  });
+
+  it("handles diffs without trailing newline", () => {
+    const diff = `diff --git a/backend/no-nl.mts b/backend/no-nl.mts
+--- a/backend/no-nl.mts
++++ b/backend/no-nl.mts
+@@ -1 +1 @@
+-old
++new`;
+    const result = parseDiff(diff);
+    const lines = result.get("backend/no-nl.mts");
+    expect(lines?.has(1)).toBe(true);
+  });
+
+  it("handles multiple diff headers for the same file", () => {
+    const diff = `
+diff --git a/backend/dup.mts b/backend/dup.mts
+--- a/backend/dup.mts
++++ b/backend/dup.mts
+@@ -1 +1 @@
+-old
++new
+diff --git a/backend/dup.mts b/backend/dup.mts
+--- a/backend/dup.mts
++++ b/backend/dup.mts
+@@ -10 +10 @@
+-old10
++new10
+`;
+    const result = parseDiff(diff);
+    const lines = result.get("backend/dup.mts");
+    expect(lines?.has(1)).toBe(true);
+    expect(lines?.has(10)).toBe(true);
+    expect(lines?.size).toBe(2);
+  });
+
   it("handles diffs with Windows style CRLF and trailing spaces", () => {
     const diff = `
 diff --git a/backend/x.mts b/backend/x.mts\r
