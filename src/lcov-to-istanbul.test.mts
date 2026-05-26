@@ -13,6 +13,13 @@ describe("lcovBufferToIstanbul", () => {
     expect(coverage["src/crlf.mts"]!.s["5"]).toBe(3);
   });
 
+  it("handles invalid BRDA entries seamlessly", () => {
+    const lcov = buf("TN:\nSF:src/invalid_brda.mts\nBRDA:5,foo\nend_of_record\n");
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(coverage["src/invalid_brda.mts"]).toBeDefined();
+    expect(coverage["src/invalid_brda.mts"]!.branchMap).toEqual({});
+  });
+
   it("converts a simple DA record to a statement entry", () => {
     const lcov = buf("TN:\nSF:src/a.mts\nDA:5,3\nend_of_record\n");
     const coverage = lcovBufferToIstanbul(lcov, []);
