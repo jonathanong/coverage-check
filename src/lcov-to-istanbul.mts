@@ -39,7 +39,24 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
     pendingFnLines.clear();
   }
 
-  for (const line of lcov.toString("utf8").split(/\r?\n/)) {
+  const text = lcov.toString("utf8");
+  // Optimization: Instead of using `text.split("\n")` which allocates a massive
+  // array of strings in memory and causes significant garbage collection overhead
+  // for large LCOV files, we manually traverse the string using `indexOf("\n")`.
+  // This reduces memory allocations and improves parsing speed significantly.
+  let start = 0;
+  while (start < text.length) {
+    let end = text.indexOf("\n", start);
+    if (end === -1) end = text.length;
+
+    let lineEnd = end;
+    if (lineEnd > start && text.charCodeAt(lineEnd - 1) === 13) {
+      lineEnd--;
+    }
+
+    const line = text.slice(start, lineEnd);
+    start = end + 1;
+
     if (line === "end_of_record") {
       flush();
       filePath = null;
