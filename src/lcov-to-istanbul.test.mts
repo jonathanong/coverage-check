@@ -6,6 +6,13 @@ function buf(text: string): Buffer {
 }
 
 describe("lcovBufferToIstanbul", () => {
+  it("handles carriage returns seamlessly", () => {
+    const lcov = buf("TN:\r\nSF:src/crlf.mts\r\nDA:5,3\r\nend_of_record\r\n");
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(coverage["src/crlf.mts"]).toBeDefined();
+    expect(coverage["src/crlf.mts"]!.s["5"]).toBe(3);
+  });
+
   it("converts a simple DA record to a statement entry", () => {
     const lcov = buf("TN:\nSF:src/a.mts\nDA:5,3\nend_of_record\n");
     const coverage = lcovBufferToIstanbul(lcov, []);
