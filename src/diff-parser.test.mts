@@ -152,6 +152,16 @@ diff --git "a/backend/caf\\303\\251.mts" "b/backend/caf\\303\\251.mts"
     expect(result.has("backend/café.mts")).toBe(true);
     expect(result.get("backend/café.mts")?.has(2)).toBe(true);
   });
+  it("trims trailing spaces perfectly", () => {
+    const diff = `diff --git a/backend/space.mts b/backend/space.mts
+--- a/backend/space.mts
++++ b/backend/space.mts
+@@ -1,1 +1,2 @@
+ unchanged
++new line   \t\r`; // line with spaces and tabs and CR at the end
+    const result = parseDiff(diff);
+    expect(result.get("backend/space.mts")?.has(2)).toBe(true);
+  });
 });
 
 describe("decodeGitCString", () => {
