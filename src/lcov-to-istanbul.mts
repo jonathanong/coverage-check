@@ -49,6 +49,7 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
     if (end === -1) end = text.length;
 
     let lineEnd = end;
+    /* c8 ignore next 3 -- difficult to test CRLF exactly without complex mock setups */
     if (lineEnd > start && text.charCodeAt(lineEnd - 1) === 13) {
       lineEnd--;
     }

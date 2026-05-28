@@ -208,3 +208,10 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/q.mts"]!.fnMap)).toHaveLength(0);
   });
 });
+
+it("handles CRLF line endings", () => {
+  const lcov = buf("TN:\r\nSF:src/crlf.mts\r\nDA:5,3\r\nend_of_record\r\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+  expect(coverage["src/crlf.mts"]).toBeDefined();
+  expect(coverage["src/crlf.mts"]!.s["5"]).toBe(3);
+});
