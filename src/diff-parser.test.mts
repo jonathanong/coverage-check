@@ -40,6 +40,11 @@ diff --git a/backend/b.mts b/backend/b.mts
 +new line
 `;
 
+function expectNoAddedLines(diff: string): void {
+  const lines = parseDiff(diff).get("backend/x.mts");
+  expect(!lines || lines.size === 0).toBe(true);
+}
+
 describe("parseDiff", () => {
   it("parses added lines from a hunk", () => {
     const result = parseDiff(SIMPLE_DIFF);
@@ -139,6 +144,39 @@ diff --git a/backend/x.mts b/backend/x.mts
     expect(!lines || lines.size === 0).toBe(true);
   });
 
+  it("skips malformed hunk headers with non-numeric old-side values", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -x +1,2 @@
++new line
+`;
+    expectNoAddedLines(diff);
+  });
+
+  it("skips hunk headers with malformed old-side counts", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -1,x +1,2 @@
++new line
+`;
+    expectNoAddedLines(diff);
+  });
+
+  it("skips hunk headers missing the closing @@ marker", () => {
+    const diff = `
+diff --git a/backend/x.mts b/backend/x.mts
+--- a/backend/x.mts
++++ b/backend/x.mts
+@@ -1 +1,2 @
++new line
+`;
+    expectNoAddedLines(diff);
+  });
+
   it("handles git-quoted paths (core.quotePath=true)", () => {
     const diff = `
 diff --git "a/backend/caf\\303\\251.mts" "b/backend/caf\\303\\251.mts"
@@ -174,5 +212,22 @@ describe("decodeGitCString", () => {
 
   it("passes through unknown escape sequences unchanged", () => {
     expect(decodeGitCString("\\z")).toBe("\\z");
+  });
+});
+
+describe("parseDiff with CRLF and trailing spaces", () => {
+  it("correctly handles CRLF and trailing spaces", () => {
+    const rawDiff =
+      "diff --git a/foo b/foo\r\n--- a/foo\r\n+++ b/foo\r\n@@ -1,1 +1,1 @@\r\n-foo \r\n+bar \t\r\n";
+    const res = parseDiff(rawDiff);
+    expect([...(res.get("foo") ?? [])]).toEqual([1]);
+  });
+});
+
+describe("parseDiff with text not ending in newline", () => {
+  it("handles text not ending in newline", () => {
+    const rawDiff = "diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1,1 +1,1 @@\n-foo\n+bar";
+    const res = parseDiff(rawDiff);
+    expect([...(res.get("foo") ?? [])]).toEqual([1]);
   });
 });

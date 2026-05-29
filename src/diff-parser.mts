@@ -49,8 +49,23 @@ export function parseDiff(text: string): DiffLines {
   let currentLines: Set<number> | null = null;
   let inHeader = false;
 
-  for (const raw of text.split("\n")) {
-    const line = raw.trimEnd();
+  let start = 0;
+  while (start < text.length) {
+    let end = text.indexOf("\n", start);
+    if (end === -1) end = text.length;
+
+    let lineEnd = end;
+    while (lineEnd > start) {
+      const charCode = text.charCodeAt(lineEnd - 1);
+      if (charCode === 32 || charCode === 9 || charCode === 13) {
+        lineEnd--;
+        continue;
+      }
+      break;
+    }
+
+    const line = text.slice(start, lineEnd);
+    start = end + 1;
 
     // Only parse +++ as a file header when we are in the diff header block
     // (after `diff --git` / `---`). Without this guard a source line beginning

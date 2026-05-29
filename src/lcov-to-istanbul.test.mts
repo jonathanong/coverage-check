@@ -140,6 +140,14 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/k.mts"]!.b)).toHaveLength(0);
   });
 
+  it("skips unrecognized line types when inside an SF block", () => {
+    const lcov = buf(["TN:", "SF:src/unrecognized.mts", "ZZZ:ignored", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(coverage["src/unrecognized.mts"]?.s).toEqual({});
+    expect(coverage["src/unrecognized.mts"]?.fnMap).toEqual({});
+    expect(coverage["src/unrecognized.mts"]?.b).toEqual({});
+  });
+
   it("converts BRDA records with numeric blockId to Istanbul branch arrays", () => {
     const lcov = buf(
       ["TN:", "SF:src/l.mts", "BRDA:99,blockA,0,7", "BRDA:99,blockA,1,3", "end_of_record"].join(
@@ -206,5 +214,23 @@ describe("lcovBufferToIstanbul", () => {
     );
     const coverage = lcovBufferToIstanbul(lcov, []);
     expect(Object.keys(coverage["src/q.mts"]!.fnMap)).toHaveLength(0);
+  });
+});
+
+describe("CRLF line endings", () => {
+  it("handles CRLF line endings correctly", () => {
+    const lcov = buf("SF:foo.ts\r\nDA:1,1\r\nend_of_record\r\n");
+    const cov = lcovBufferToIstanbul(lcov, []);
+    expect(cov["foo.ts"]).toBeDefined();
+    expect(cov["foo.ts"].s["1"]).toBe(1);
+  });
+});
+
+describe("LCOV not ending in newline", () => {
+  it("handles LCOV not ending in newline", () => {
+    const lcov = buf("SF:foo.ts\nDA:1,1\nend_of_record");
+    const cov = lcovBufferToIstanbul(lcov, []);
+    expect(cov["foo.ts"]).toBeDefined();
+    expect(cov["foo.ts"].s["1"]).toBe(1);
   });
 });
