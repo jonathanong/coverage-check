@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 type Loc = { start: { line: number; column: number }; end: { line: number; column: number } };
 
 export type IstanbulFileCoverage = {
@@ -54,17 +55,15 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
       lineEnd--;
     }
 
-    const line = text.slice(start, lineEnd);
-    start = end + 1;
-
-    if (line === "end_of_record") {
+    if (lineEnd - start === 13 && text.startsWith("end_of_record", start)) {
       flush();
       filePath = null;
+      start = end + 1;
       continue;
     }
-    if (line.startsWith("SF:")) {
+    if (text.startsWith("SF:", start)) {
       flush();
-      filePath = normalizeFilePath(line.slice(3).trim(), stripPrefixes);
+      filePath = normalizeFilePath(text.slice(start + 3, lineEnd).trim(), stripPrefixes);
       if (filePath && !coverage[filePath]) {
         coverage[filePath] = {
           path: filePath,
@@ -76,16 +75,30 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
           b: {},
         };
       }
+      start = end + 1;
       continue;
     }
-    if (!filePath) continue;
+    if (!filePath) {
+      start = end + 1;
+      continue;
+    }
     const fileCov = coverage[filePath]!; // filePath was validated against coverage when SF: was processed
 
-    if (line.startsWith("DA:")) {
-      const [lineNo, hits] = line.slice(3).split(",", 2);
-      const l = Number.parseInt(lineNo!, 10);
-      const h = Number.parseInt(hits ?? "", 10);
-      if (!Number.isInteger(l) || !Number.isInteger(h)) continue;
+    if (text.startsWith("DA:", start)) {
+      const commaIdx = text.indexOf(",", start + 3);
+      const lineNoStr =
+        commaIdx !== -1 && commaIdx < lineEnd
+          ? text.slice(start + 3, commaIdx)
+          : text.slice(start + 3, lineEnd);
+      const hitsStr =
+        commaIdx !== -1 && commaIdx < lineEnd ? text.slice(commaIdx + 1, lineEnd) : "";
+
+      const l = Number.parseInt(lineNoStr, 10);
+      const h = Number.parseInt(hitsStr, 10);
+      if (!Number.isInteger(l) || !Number.isInteger(h)) {
+        start = end + 1;
+        continue;
+      }
       const key = String(l);
       if (fileCov.statementMap[key] === undefined) {
         fileCov.statementMap[key] = loc(l);
@@ -93,23 +106,34 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
       } else {
         fileCov.s[key] = (fileCov.s[key] as number) + h;
       }
-    } else if (line.startsWith("FN:") || line.startsWith("FNL:")) {
-      const rest = line.slice(line.startsWith("FNL:") ? 4 : 3);
+    } else if (text.startsWith("FN:", start) || text.startsWith("FNL:", start)) {
+      const restStart = start + (text.startsWith("FNL:", start) ? 4 : 3);
+      const rest = text.slice(restStart, lineEnd);
       const firstComma = rest.indexOf(",");
-      if (firstComma === -1) continue;
+      if (firstComma === -1) {
+        start = end + 1;
+        continue;
+      }
       const l = Number.parseInt(rest.slice(0, firstComma), 10);
       const afterFirst = rest.slice(firstComma + 1);
       // Handle both FN:start,name and FN:start,end,name (LCOV 2.x three-field form)
       const secondComma = afterFirst.indexOf(",");
       const name = secondComma === -1 ? afterFirst : afterFirst.slice(secondComma + 1);
       if (Number.isInteger(l) && name) pendingFnLines.set(name, l);
-    } else if (line.startsWith("FNDA:") || line.startsWith("FNA:")) {
-      const rest = line.slice(line.startsWith("FNA:") ? 4 : 5);
+    } else if (text.startsWith("FNDA:", start) || text.startsWith("FNA:", start)) {
+      const restStart = start + (text.startsWith("FNA:", start) ? 4 : 5);
+      const rest = text.slice(restStart, lineEnd);
       const commaIdx = rest.indexOf(",");
-      if (commaIdx === -1) continue;
+      if (commaIdx === -1) {
+        start = end + 1;
+        continue;
+      }
       const h = Number.parseInt(rest.slice(0, commaIdx), 10);
       const name = rest.slice(commaIdx + 1);
-      if (!Number.isInteger(h) || !name) continue;
+      if (!Number.isInteger(h) || !name) {
+        start = end + 1;
+        continue;
+      }
       const startLine = pendingFnLines.get(name) ?? 0;
       const key = startLine > 0 ? `${name}@${startLine}` : name;
       const fnLoc = loc(startLine);
@@ -119,13 +143,36 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
       } else {
         fileCov.f[key] = (fileCov.f[key] as number) + h;
       }
-    } else if (line.startsWith("BRDA:")) {
-      const parts = line.slice(5).split(",", 4);
-      const lineNo = Number.parseInt(parts[0]!, 10);
-      const blockId = parts[1] ?? "";
-      const branchId = parts[2] ?? "";
-      const taken = parts[3] === "-" ? 0 : Number.parseInt(parts[3] ?? "", 10);
-      if (!Number.isInteger(lineNo) || !blockId || !branchId || !Number.isInteger(taken)) continue;
+    } else if (text.startsWith("BRDA:", start)) {
+      const comma1 = text.indexOf(",", start + 5);
+      const comma2 = comma1 !== -1 && comma1 < lineEnd ? text.indexOf(",", comma1 + 1) : -1;
+      const comma3 = comma2 !== -1 && comma2 < lineEnd ? text.indexOf(",", comma2 + 1) : -1;
+
+      const lineNoStr =
+        comma1 !== -1 && comma1 < lineEnd
+          ? text.slice(start + 5, comma1)
+          : text.slice(start + 5, lineEnd);
+      const blockId =
+        comma1 !== -1 && comma1 < lineEnd
+          ? comma2 !== -1 && comma2 < lineEnd
+            ? text.slice(comma1 + 1, comma2)
+            : text.slice(comma1 + 1, lineEnd)
+          : "";
+      const branchId =
+        comma2 !== -1 && comma2 < lineEnd
+          ? comma3 !== -1 && comma3 < lineEnd
+            ? text.slice(comma2 + 1, comma3)
+            : text.slice(comma2 + 1, lineEnd)
+          : "";
+      const takenStr = comma3 !== -1 && comma3 < lineEnd ? text.slice(comma3 + 1, lineEnd) : "";
+
+      const lineNo = Number.parseInt(lineNoStr, 10);
+      const taken = takenStr === "-" ? 0 : Number.parseInt(takenStr, 10);
+
+      if (!Number.isInteger(lineNo) || !blockId || !branchId || !Number.isInteger(taken)) {
+        start = end + 1;
+        continue;
+      }
       const blockKey = `${lineNo}-${blockId}`;
       let fileBlocks = fileBranches.get(filePath);
       if (!fileBlocks) {
@@ -139,6 +186,7 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
       }
       blockBranches.set(branchId, (blockBranches.get(branchId) ?? 0) + taken);
     }
+    start = end + 1;
   }
   flush();
 
@@ -148,7 +196,8 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
   for (const [fp, blocks] of fileBranches) {
     const fileCov = coverage[fp]!; // fp was validated against coverage when added to fileBranches
     for (const [blockKey, branches] of blocks) {
-      const lineNo = Number.parseInt(blockKey.split("-")[0]!, 10); // blockKey is always "N-blockId"
+      const dashIdx = blockKey.indexOf("-");
+      const lineNo = Number.parseInt(dashIdx === -1 ? blockKey : blockKey.slice(0, dashIdx), 10);
       const branchLoc = loc(lineNo);
       const sorted = [...branches.entries()].sort(([a], [b]) =>
         a.localeCompare(b, undefined, { numeric: true }),
