@@ -8,11 +8,14 @@ export function mergeLcov(reports: LcovData[]): LcovData {
     for (const [file, lines] of report) {
       let target = merged.get(file);
       if (target === undefined) {
-        target = new Map();
+        // Optimization: Use `new Map(lines)` instead of copying elements one by one.
+        // This skips redundant iterations and reduces Map insertion overhead.
+        target = new Map(lines);
         merged.set(file, target);
-      }
-      for (const [lineNo, hits] of lines) {
-        target.set(lineNo, (target.get(lineNo) ?? 0) + hits);
+      } else {
+        for (const [lineNo, hits] of lines) {
+          target.set(lineNo, (target.get(lineNo) ?? 0) + hits);
+        }
       }
     }
   }

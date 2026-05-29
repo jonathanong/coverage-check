@@ -31,6 +31,19 @@ describe("mergeLcov", () => {
   it("returns empty map for empty input", () => {
     expect(mergeLcov([])).toEqual(new Map());
   });
+
+  it("returns a deep copy for single input report", () => {
+    const report = parseLcov(`SF:backend/foo.mts\nDA:1,2\nDA:3,4\nend_of_record\n`);
+    const merged = mergeLcov([report]);
+    const originalLines = report.get("backend/foo.mts")!;
+
+    expect(merged).not.toBe(report);
+    expect(merged.get("backend/foo.mts")).not.toBe(originalLines);
+    merged.get("backend/foo.mts")?.set(1, 99);
+
+    expect(originalLines.get(1)).toBe(2);
+    expect(merged.get("backend/foo.mts")?.get(1)).toBe(99);
+  });
 });
 
 describe("toLcov", () => {
