@@ -82,9 +82,13 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
     const fileCov = coverage[filePath]!; // filePath was validated against coverage when SF: was processed
 
     if (line.startsWith("DA:")) {
-      const [lineNo, hits] = line.slice(3).split(",", 2);
-      const l = Number.parseInt(lineNo!, 10);
-      const h = Number.parseInt(hits ?? "", 10);
+      // Optimization: avoid string split for hot path
+      const comma = line.indexOf(",", 3);
+      if (comma === -1) continue;
+      const lineNo = line.slice(3, comma);
+      const hits = line.slice(comma + 1);
+      const l = Number.parseInt(lineNo, 10);
+      const h = Number.parseInt(hits, 10);
       if (!Number.isInteger(l) || !Number.isInteger(h)) continue;
       const key = String(l);
       if (fileCov.statementMap[key] === undefined) {
@@ -120,11 +124,21 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
         fileCov.f[key] = (fileCov.f[key] as number) + h;
       }
     } else if (line.startsWith("BRDA:")) {
-      const parts = line.slice(5).split(",", 4);
-      const lineNo = Number.parseInt(parts[0]!, 10);
-      const blockId = parts[1] ?? "";
-      const branchId = parts[2] ?? "";
-      const taken = parts[3] === "-" ? 0 : Number.parseInt(parts[3] ?? "", 10);
+      // Optimization: avoid string split for hot path
+      const c1 = line.indexOf(",", 5);
+      if (c1 === -1) continue;
+      const c2 = line.indexOf(",", c1 + 1);
+      if (c2 === -1) continue;
+      const c3 = line.indexOf(",", c2 + 1);
+      if (c3 === -1) continue;
+
+      const lineNoStr = line.slice(5, c1);
+      const blockId = line.slice(c1 + 1, c2);
+      const branchId = line.slice(c2 + 1, c3);
+      const takenStr = line.slice(c3 + 1);
+
+      const lineNo = Number.parseInt(lineNoStr, 10);
+      const taken = takenStr === "-" ? 0 : Number.parseInt(takenStr, 10);
       if (!Number.isInteger(lineNo) || !blockId || !branchId || !Number.isInteger(taken)) continue;
       const blockKey = `${lineNo}-${blockId}`;
       let fileBlocks = fileBranches.get(filePath);
@@ -148,7 +162,10 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
   for (const [fp, blocks] of fileBranches) {
     const fileCov = coverage[fp]!; // fp was validated against coverage when added to fileBranches
     for (const [blockKey, branches] of blocks) {
-      const lineNo = Number.parseInt(blockKey.split("-")[0]!, 10); // blockKey is always "N-blockId"
+      // Optimization: avoid string split for hot path. blockKey is always "N-blockId"
+      const dashIdx = blockKey.indexOf("-");
+      const lineNoStr = dashIdx === -1 ? blockKey : blockKey.slice(0, dashIdx);
+      const lineNo = Number.parseInt(lineNoStr, 10);
       const branchLoc = loc(lineNo);
       const sorted = [...branches.entries()].sort(([a], [b]) =>
         a.localeCompare(b, undefined, { numeric: true }),
