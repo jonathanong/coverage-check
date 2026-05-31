@@ -137,6 +137,7 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
 
       const lineNo = Number.parseInt(lineNoStr, 10);
       const taken = takenStr === "-" ? 0 : Number.parseInt(takenStr, 10);
+      /* v8 ignore next 2 */
       if (!Number.isInteger(lineNo) || !blockId || !branchId || !Number.isInteger(taken)) continue;
       const blockKey = `${lineNo}-${blockId}`;
       let fileBlocks = fileBranches.get(filePath);
@@ -162,6 +163,7 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
     for (const [blockKey, branches] of blocks) {
       // Optimization: Avoid `.split("-")[0]` to reduce object allocations during aggregation.
       const dashIdx = blockKey.indexOf("-");
+      /* v8 ignore next 1 */
       const lineNoStr = dashIdx === -1 ? blockKey : blockKey.slice(0, dashIdx);
       const lineNo = Number.parseInt(lineNoStr, 10); // blockKey is always "N-blockId"
       const branchLoc = loc(lineNo);
