@@ -84,8 +84,9 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
     if (line.startsWith("DA:")) {
       // Optimization: Manually finding commas to avoid `.split()` allocation overhead
       const comma = line.indexOf(",", 3);
-      const l = Number.parseInt(comma === -1 ? line.slice(3) : line.slice(3, comma), 10);
-      const h = Number.parseInt(comma === -1 ? "" : line.slice(comma + 1), 10);
+      if (comma === -1) continue;
+      const l = Number.parseInt(line.slice(3, comma), 10);
+      const h = Number.parseInt(line.slice(comma + 1), 10);
       if (!Number.isInteger(l) || !Number.isInteger(h)) continue;
       const key = String(l);
       if (fileCov.statementMap[key] === undefined) {
@@ -123,23 +124,16 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
     } else if (line.startsWith("BRDA:")) {
       // Optimization: Avoid `.split()` allocation overhead for heavily repeated lines
       const comma1 = line.indexOf(",", 5);
-      const comma2 = comma1 === -1 ? -1 : line.indexOf(",", comma1 + 1);
-      const comma3 = comma2 === -1 ? -1 : line.indexOf(",", comma2 + 1);
+      if (comma1 === -1) continue;
+      const comma2 = line.indexOf(",", comma1 + 1);
+      if (comma2 === -1) continue;
+      const comma3 = line.indexOf(",", comma2 + 1);
+      if (comma3 === -1) continue;
 
-      const lineNo = Number.parseInt(comma1 === -1 ? line.slice(5) : line.slice(5, comma1), 10);
-      const blockId =
-        comma1 === -1
-          ? ""
-          : comma2 === -1
-            ? line.slice(comma1 + 1)
-            : line.slice(comma1 + 1, comma2);
-      const branchId =
-        comma2 === -1
-          ? ""
-          : comma3 === -1
-            ? line.slice(comma2 + 1)
-            : line.slice(comma2 + 1, comma3);
-      const takenStr = comma3 === -1 ? "" : line.slice(comma3 + 1);
+      const lineNo = Number.parseInt(line.slice(5, comma1), 10);
+      const blockId = line.slice(comma1 + 1, comma2);
+      const branchId = line.slice(comma2 + 1, comma3);
+      const takenStr = line.slice(comma3 + 1);
       const taken = takenStr === "-" ? 0 : Number.parseInt(takenStr, 10);
       if (!Number.isInteger(lineNo) || !blockId || !branchId || !Number.isInteger(taken)) continue;
       const blockKey = `${lineNo}-${blockId}`;
