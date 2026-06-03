@@ -19,6 +19,8 @@ export type CheckArgs = {
   gh?: GhRunner;
   /** Path to append the GitHub step summary. Default: $GITHUB_STEP_SUMMARY. */
   summaryFile?: string | null;
+  /** Annotate each uncovered line with its trimmed source text in stdout. Default: false. */
+  annotateSource?: boolean;
 };
 
 export function parseCheckArgs(argv: string[]): CheckArgs {
@@ -37,6 +39,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     suite: null,
     branch: "main",
     summaryFile: process.env["GITHUB_STEP_SUMMARY"] ?? null,
+    annotateSource: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -97,6 +100,9 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
         args.pr = parseInt(raw, 10);
         break;
       }
+      case "--annotate-source":
+        args.annotateSource = true;
+        break;
       default:
         throw new Error(`unknown flag: ${flag}`);
     }

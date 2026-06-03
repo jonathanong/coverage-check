@@ -109,8 +109,8 @@ export function parseDiff(text: string): DiffLines {
   return result;
 }
 
-/** Runs git diff and returns the parsed result. */
-export async function getChangedLines(baseRef: string, headRef: string): Promise<DiffLines> {
+/** Runs git merge-base + git diff and returns the raw diff text. Internal shared helper. */
+export async function runGitDiff(baseRef: string, headRef: string): Promise<string> {
   const { spawn } = await import("node:child_process");
   const spawnProcess = (cmd: string, args: string[]) =>
     new Promise<string>((resolve, reject) => {
@@ -128,7 +128,7 @@ export async function getChangedLines(baseRef: string, headRef: string): Promise
   const mergeBase = await spawnProcess("git", ["merge-base", baseRef, headRef]);
   const base = mergeBase.trim();
   // --src-prefix/--dst-prefix override diff.noprefix and diff.mnemonicPrefix git config
-  const diff = await spawnProcess("git", [
+  return spawnProcess("git", [
     "diff",
     "--unified=0",
     "--inter-hunk-context=0",
@@ -138,5 +138,9 @@ export async function getChangedLines(baseRef: string, headRef: string): Promise
     base,
     headRef,
   ]);
-  return parseDiff(diff);
+}
+
+/** Runs git diff and returns the parsed result. */
+export async function getChangedLines(baseRef: string, headRef: string): Promise<DiffLines> {
+  return parseDiff(await runGitDiff(baseRef, headRef));
 }

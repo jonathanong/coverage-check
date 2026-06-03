@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov } from "../lcov-merge.mts";
 import { getChangedLines } from "../diff-parser.mts";
+import { getChangedLineContent } from "../diff-parser-content.mts";
 import { loadRules } from "../rules.mts";
 import { computePatchCoverage } from "../patch-coverage.mts";
 import { collapseRanges, renderFailureComment } from "../report.mts";
@@ -11,7 +12,7 @@ import { writeSummary } from "../step-summary.mts";
 import { parseCheckArgs } from "./check-args.mts";
 import type { CheckArgs } from "./check-args.mts";
 import type { SuiteSource } from "../step-summary.mts";
-import type { LcovData } from "../types.mts";
+import type { DiffLineContent, LcovData } from "../types.mts";
 export type { CheckArgs } from "./check-args.mts";
 
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
@@ -81,8 +82,16 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   const lcov = mergeLcov(reports);
 
   let diff;
+  let diffContent: DiffLineContent | null = null;
   try {
-    diff = await getChangedLines(args.base, args.head);
+    if (args.annotateSource) {
+      diffContent = await getChangedLineContent(args.base, args.head);
+      diff = new Map(
+        [...diffContent].map(([f, m]) => [f, new Set(m.keys())] as [string, Set<number>]),
+      );
+    } else {
+      diff = await getChangedLines(args.base, args.head);
+    }
   } catch (err) {
     stderr(`coverage-check: git diff failed: ${err}`);
     return 2;
@@ -134,7 +143,16 @@ export async function runCheck(args: CheckArgs): Promise<number> {
         `  ${bucket.rule}: ${pct} (${bucket.hit}/${bucket.coverable}) — threshold ${bucket.threshold}%`,
       );
       for (const file of bucket.files.filter((f) => f.uncoveredLines.length > 0)) {
-        stdout(`    ${file.file}: ${collapseRanges(file.uncoveredLines)}`);
+        if (diffContent !== null) {
+          stdout(`    ${file.file}:`);
+          for (const lineNo of file.uncoveredLines) {
+            /* c8 ignore next -- diffContent is single-sourced from the same diff, lineNo is always present */
+            const text = diffContent.get(file.file)?.get(lineNo) ?? "";
+            stdout(`      L${lineNo}  ${text}`);
+          }
+        } else {
+          stdout(`    ${file.file}: ${collapseRanges(file.uncoveredLines)}`);
+        }
       }
     }
   } else {

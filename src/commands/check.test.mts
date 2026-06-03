@@ -128,6 +128,18 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("accepts --annotate-source flag", async () => {
+    expect(
+      await main([
+        "--rules",
+        join(tmpDir, "nonexistent.yml"),
+        "--annotate-source",
+        "--artifacts",
+        artifactsDir,
+      ]),
+    ).toBe(2);
+  });
+
   it("accepts --branch flag with a real branch name", async () => {
     expect(
       await main([
@@ -973,6 +985,39 @@ describe("with a real git repo and a known diff", () => {
       });
       expect(spy).toHaveBeenCalledWith(expect.stringContaining("warning: coverage from suite"));
       expect(spy).toHaveBeenCalledWith(expect.stringContaining("warning: coverage from file"));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("annotates uncovered lines with source text when annotateSource is true", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+    const stdoutLines: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      stdoutLines.push(String(chunk));
+      return true;
+    });
+    try {
+      const result = await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: null,
+        annotateSource: true,
+      });
+      expect(result).toBe(1);
+      const output = stdoutLines.join("");
+      expect(output).toContain("backend/foo.mts:");
+      expect(output).toContain("L2  const b = 2");
     } finally {
       spy.mockRestore();
     }
