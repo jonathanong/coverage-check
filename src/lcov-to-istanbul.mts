@@ -82,7 +82,12 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
     const fileCov = coverage[filePath]!; // filePath was validated against coverage when SF: was processed
 
     if (line.startsWith("DA:")) {
-      const [lineNo, hits] = line.slice(3).split(",", 2);
+      // Optimization: Avoid split(",") for DA
+      const rest = line.slice(3);
+      const commaIdx = rest.indexOf(",");
+      if (commaIdx === -1) continue;
+      const lineNo = rest.slice(0, commaIdx);
+      const hits = rest.slice(commaIdx + 1);
       const l = Number.parseInt(lineNo!, 10);
       const h = Number.parseInt(hits ?? "", 10);
       if (!Number.isInteger(l) || !Number.isInteger(h)) continue;
@@ -120,7 +125,20 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
         fileCov.f[key] = (fileCov.f[key] as number) + h;
       }
     } else if (line.startsWith("BRDA:")) {
-      const parts = line.slice(5).split(",", 4);
+      // Optimization: Avoid split(",") for BRDA
+      const rest = line.slice(5);
+      const c1 = rest.indexOf(",");
+      if (c1 === -1) continue;
+      const c2 = rest.indexOf(",", c1 + 1);
+      if (c2 === -1) continue;
+      const c3 = rest.indexOf(",", c2 + 1);
+      if (c3 === -1) continue;
+      const parts = [
+        rest.slice(0, c1),
+        rest.slice(c1 + 1, c2),
+        rest.slice(c2 + 1, c3),
+        rest.slice(c3 + 1),
+      ];
       const lineNo = Number.parseInt(parts[0]!, 10);
       const blockId = parts[1] ?? "";
       const branchId = parts[2] ?? "";
@@ -148,7 +166,9 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
   for (const [fp, blocks] of fileBranches) {
     const fileCov = coverage[fp]!; // fp was validated against coverage when added to fileBranches
     for (const [blockKey, branches] of blocks) {
-      const lineNo = Number.parseInt(blockKey.split("-")[0]!, 10); // blockKey is always "N-blockId"
+      // Optimization: Avoid split("-") for blockKey
+      const dashIdx = blockKey.indexOf("-");
+      const lineNo = Number.parseInt(dashIdx === -1 ? blockKey : blockKey.slice(0, dashIdx), 10); // blockKey is always "N-blockId"
       const branchLoc = loc(lineNo);
       const sorted = [...branches.entries()].sort(([a], [b]) =>
         a.localeCompare(b, undefined, { numeric: true }),
