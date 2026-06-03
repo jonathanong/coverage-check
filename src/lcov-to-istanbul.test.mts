@@ -175,6 +175,12 @@ describe("lcovBufferToIstanbul", () => {
     expect(coverage["src/i.mts"]!.s["1"]).toBe(5);
   });
 
+  it("handles DA: line with extra fields", () => {
+    const lcov = buf("TN:\nSF:src/da-extra.mts\nDA:5,3,checksum\nend_of_record\n");
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(coverage["src/da-extra.mts"]!.s["5"]).toBe(3);
+  });
+
   it("skips DA: line with no comma (missing hit count)", () => {
     const lcov = buf(["TN:", "SF:src/da-nocomma.mts", "DA:5", "end_of_record"].join("\n"));
     const coverage = lcovBufferToIstanbul(lcov, []);
