@@ -96,6 +96,30 @@ coverage-check check \
 
 When `$GITHUB_STEP_SUMMARY` is set, a per-suite totals and per-rule patch-coverage table is appended to the job summary automatically.
 
+### Diagnosing uncovered lines
+
+Pass `--annotate-source` to print the trimmed source text of each uncovered line alongside its line number:
+
+```
+coverage-check: FAILED
+
+  backend/**: 80.0% (4/5) — threshold 90%
+    backend/foo.mts:
+      L42  function f(a = 1) {
+      L55  const { x } = opts
+```
+
+This makes it immediately clear which construct needs execution to satisfy V8/Istanbul line coverage.
+Two common sources of confusion:
+
+- **Default parameters** — `function f(a = 1)` is only fully covered when the function is called
+  _without_ that argument so the default expression executes.
+- **Shorthand object properties** — `const { x } = opts` is covered when `opts.x` is actually
+  accessed during the test.
+
+The annotation affects only the stdout failure output. The GitHub PR sticky comment and Actions step
+summary are unchanged.
+
 ## Rules file
 
 ```yaml
@@ -115,21 +139,22 @@ Rules are matched in order; the first match wins. Files in the diff not matched 
 
 ### `coverage-check check`
 
-| Flag             | Default                | Description                                                                                  |
-| ---------------- | ---------------------- | -------------------------------------------------------------------------------------------- |
-| `--rules`        | `.coverage-rules.yml`  | Path to YAML rules file                                                                      |
-| `--artifacts`    | `./coverage-artifacts` | Directory to scan for `lcov.info` files                                                      |
-| `--base`         | `origin/main`          | Base git ref for `git diff`                                                                  |
-| `--head`         | `HEAD`                 | Head git ref for `git diff`                                                                  |
-| `--store-fs`     | —                      | Path to a filesystem suite store directory                                                   |
-| `--store`        | —                      | Alias for `--store-fs`                                                                       |
-| `--store-s3`     | —                      | S3 suite store spec: `<bucket>[/<prefix>]`                                                   |
-| `--branch`       | `"main"`               | Branch pointer to follow when reading from the store                                         |
-| `--suite`        | —                      | Name of the current suite (no `/` or `\\`); fresh artifacts override this suite in the store |
-| `--strip-prefix` | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                                |
-| `--pr`           | —                      | Pull request number for sticky comment                                                       |
-| `--repo`         | `$GITHUB_REPOSITORY`   | `owner/repo` for sticky comment                                                              |
-| `--json`         | —                      | Write JSON result to this path                                                               |
+| Flag                | Default                | Description                                                                                                |
+| ------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `--rules`           | `.coverage-rules.yml`  | Path to YAML rules file                                                                                    |
+| `--artifacts`       | `./coverage-artifacts` | Directory to scan for `lcov.info` files                                                                    |
+| `--base`            | `origin/main`          | Base git ref for `git diff`                                                                                |
+| `--head`            | `HEAD`                 | Head git ref for `git diff`                                                                                |
+| `--store-fs`        | —                      | Path to a filesystem suite store directory                                                                 |
+| `--store`           | —                      | Alias for `--store-fs`                                                                                     |
+| `--store-s3`        | —                      | S3 suite store spec: `<bucket>[/<prefix>]`                                                                 |
+| `--branch`          | `"main"`               | Branch pointer to follow when reading from the store                                                       |
+| `--suite`           | —                      | Name of the current suite (no `/` or `\\`); fresh artifacts override this suite in the store               |
+| `--strip-prefix`    | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                                              |
+| `--pr`              | —                      | Pull request number for sticky comment                                                                     |
+| `--repo`            | `$GITHUB_REPOSITORY`   | `owner/repo` for sticky comment                                                                            |
+| `--json`            | —                      | Write JSON result to this path                                                                             |
+| `--annotate-source` | —                      | Print the trimmed source text of each uncovered line in stdout (does not alter PR comment or step summary) |
 
 ### `coverage-check store-put`
 

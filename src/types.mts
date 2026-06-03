@@ -3,6 +3,9 @@ export type CoverageRule = {
   patch_coverage_min: number;
 };
 
+/** Map from repo-root-relative file path to map of added line number → trimmed source text. */
+export type DiffLineContent = Map<string, Map<number, string>>;
+
 export type CoverageRules = {
   rules: CoverageRule[];
 };
