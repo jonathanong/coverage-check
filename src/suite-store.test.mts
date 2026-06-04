@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   assertSafePathComponent,
+  assertSafeRef,
   decodeBranchName,
   encodeBranchName,
   FileSystemSuiteStore,
@@ -306,6 +307,13 @@ describe("assertSafePathComponent", () => {
   it("rejects non-string values at runtime (e.g. from JSON.parse)", () => {
     expect(() => assertSafePathComponent(123 as unknown as string, "sha")).toThrow("invalid sha");
     expect(() => assertSafePathComponent(null as unknown as string, "sha")).toThrow("invalid sha");
+  });
+});
+
+describe("assertSafeRef", () => {
+  it("rejects non-string values at runtime", () => {
+    expect(() => assertSafeRef(123 as unknown as string, "sha")).toThrow("invalid sha");
+    expect(() => assertSafeRef(null as unknown as string, "sha")).toThrow("invalid sha");
   });
 });
 
