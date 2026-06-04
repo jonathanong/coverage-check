@@ -170,6 +170,10 @@ describe("coverage html", () => {
     ]);
   });
 
+  it("throws when --branch starts with -", () => {
+    expect(() => parseCoverageHtmlArgs(["--branch", "-main"])).toThrow(/cannot start with '-'/);
+  });
+
   it("validates mutually exclusive store options", () => {
     expect(() =>
       parseCoverageHtmlArgs(["--store-fs", "./coverage-store", "--store-s3", "bucket/prefix"]),

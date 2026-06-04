@@ -48,9 +48,12 @@ export function parseCoverageHtmlArgs(argv: string[]): CoverageHtmlArgs {
       case "--artifacts":
         args.artifacts = value();
         break;
-      case "--branch":
-        args.branch = value();
+      case "--branch": {
+        const branch = value();
+        if (branch.startsWith("-")) throw new Error(`invalid branch (cannot start with '-'): ${JSON.stringify(branch)}`);
+        args.branch = branch;
         break;
+      }
       case "--output":
         args.output = value();
         break;

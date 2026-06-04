@@ -59,12 +59,18 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
       case "--artifacts":
         args.artifacts = val();
         break;
-      case "--base":
-        args.base = val();
+      case "--base": {
+        const base = val();
+        if (base.startsWith("-")) throw new Error(`invalid --base (cannot start with '-'): ${JSON.stringify(base)}`);
+        args.base = base;
         break;
-      case "--head":
-        args.head = val();
+      }
+      case "--head": {
+        const head = val();
+        if (head.startsWith("-")) throw new Error(`invalid --head (cannot start with '-'): ${JSON.stringify(head)}`);
+        args.head = head;
         break;
+      }
       case "--repo":
         args.repo = val();
         break;
@@ -82,7 +88,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
         break;
       case "--branch": {
         const branch = val();
-        if (branch.length === 0) throw new Error(`invalid branch: ${JSON.stringify(branch)}`);
+        if (branch.length === 0 || branch.startsWith("-")) throw new Error(`invalid branch (cannot start with '-'): ${JSON.stringify(branch)}`);
         args.branch = branch;
         break;
       }

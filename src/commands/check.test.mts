@@ -35,6 +35,15 @@ describe("main argument validation", () => {
     expect(await main(["--rules", "--pr"])).toBe(2);
   });
 
+  it("returns exit code 2 when --base starts with -", async () => {
+    expect(await main(["--base", "-HEAD"])).toBe(2);
+  });
+  it("returns exit code 2 when --head starts with -", async () => {
+    expect(await main(["--head", "-HEAD"])).toBe(2);
+  });
+  it("returns exit code 2 when --branch starts with -", async () => {
+    expect(await main(["--branch", "-main"])).toBe(2);
+  });
   it("returns exit code 2 when --pr is set but repo is empty", async () => {
     const saved = process.env["GITHUB_REPOSITORY"];
     delete process.env["GITHUB_REPOSITORY"];
