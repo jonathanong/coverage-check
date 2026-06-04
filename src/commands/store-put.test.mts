@@ -91,11 +91,15 @@ describe("main argument parsing", () => {
   });
 
   it("returns 2 when --sha starts with -", async () => {
-    expect(await main(["--suite", "backend", "--store-fs", "/tmp", "--sha", "-abc", "--branch", "main"])).toBe(2);
+    expect(
+      await main(["--suite", "backend", "--store-fs", "/tmp", "--sha", "-abc", "--branch", "main"]),
+    ).toBe(2);
   });
 
   it("returns 2 when --branch starts with -", async () => {
-    expect(await main(["--suite", "backend", "--store-fs", "/tmp", "--sha", "abc", "--branch", "-main"])).toBe(2);
+    expect(
+      await main(["--suite", "backend", "--store-fs", "/tmp", "--sha", "abc", "--branch", "-main"]),
+    ).toBe(2);
   });
 
   it("returns 2 when a flag is missing its value", async () => {

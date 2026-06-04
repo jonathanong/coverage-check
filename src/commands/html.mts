@@ -50,7 +50,8 @@ export function parseCoverageHtmlArgs(argv: string[]): CoverageHtmlArgs {
         break;
       case "--branch": {
         const branch = value();
-        if (branch.startsWith("-")) throw new Error(`invalid branch (cannot start with '-'): ${JSON.stringify(branch)}`);
+        if (branch.startsWith("-"))
+          throw new Error(`invalid branch (cannot start with '-'): ${JSON.stringify(branch)}`);
         args.branch = branch;
         break;
       }
