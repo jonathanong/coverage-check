@@ -3,6 +3,7 @@ import path from "node:path";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { lcovBufferToIstanbul } from "../lcov-to-istanbul.mts";
 import { makeStore } from "../store-factory.mts";
+import { assertSafeRef } from "../suite-store.mts";
 import type { SuiteStore } from "../suite-store.mts";
 
 export type CoverageHtmlArgs = {
@@ -48,14 +49,9 @@ export function parseCoverageHtmlArgs(argv: string[]): CoverageHtmlArgs {
       case "--artifacts":
         args.artifacts = value();
         break;
-      case "--branch": {
-        const branch = value();
-        if (branch.startsWith("-")) {
-          throw new Error(`invalid branch: ${JSON.stringify(branch)}`);
-        }
-        args.branch = branch;
+      case "--branch":
+        args.branch = assertSafeRef(value(), "branch");
         break;
-      }
       case "--output":
         args.output = value();
         break;

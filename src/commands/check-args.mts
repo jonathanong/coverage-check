@@ -1,5 +1,5 @@
 import { makeStore } from "../store-factory.mts";
-import { assertSafePathComponent } from "../suite-store.mts";
+import { assertSafePathComponent, assertSafeRef } from "../suite-store.mts";
 import type { SuiteStore } from "../suite-store.mts";
 import type { GhRunner } from "../github-comment.mts";
 
@@ -59,18 +59,12 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
       case "--artifacts":
         args.artifacts = val();
         break;
-      case "--base": {
-        const base = val();
-        if (base.startsWith("-")) throw new Error(`invalid base: ${JSON.stringify(base)}`);
-        args.base = base;
+      case "--base":
+        args.base = assertSafeRef(val(), "base");
         break;
-      }
-      case "--head": {
-        const head = val();
-        if (head.startsWith("-")) throw new Error(`invalid head: ${JSON.stringify(head)}`);
-        args.head = head;
+      case "--head":
+        args.head = assertSafeRef(val(), "head");
         break;
-      }
       case "--repo":
         args.repo = val();
         break;
@@ -86,14 +80,9 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
       case "--strip-prefix":
         args.stripPrefixes.push(val());
         break;
-      case "--branch": {
-        const branch = val();
-        if (branch.length === 0 || branch.startsWith("-")) {
-          throw new Error(`invalid branch: ${JSON.stringify(branch)}`);
-        }
-        args.branch = branch;
+      case "--branch":
+        args.branch = assertSafeRef(val(), "branch");
         break;
-      }
       case "--store":
       case "--store-fs":
         storeFs = val();

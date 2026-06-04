@@ -4,7 +4,7 @@ import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov, toLcov } from "../lcov-merge.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { makeStore } from "../store-factory.mts";
-import { assertSafePathComponent } from "../suite-store.mts";
+import { assertSafePathComponent, assertSafeRef } from "../suite-store.mts";
 import type { SuiteStore } from "../suite-store.mts";
 
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
@@ -85,12 +85,10 @@ function parseArgs(argv: string[]): StorePutArgs {
   }
   if (args.sha !== undefined) {
     assertSafePathComponent(args.sha, "sha");
-    if (args.sha.startsWith("-")) {
-      throw new Error(`invalid sha: ${JSON.stringify(args.sha)}`);
-    }
+    assertSafeRef(args.sha, "sha");
   }
-  if (args.branch !== undefined && (args.branch.length === 0 || args.branch.startsWith("-"))) {
-    throw new Error(`invalid branch: ${JSON.stringify(args.branch)}`);
+  if (args.branch !== undefined) {
+    assertSafeRef(args.branch, "branch");
   }
 
   const store = makeStore({ fs: storeFs, s3: storeS3 })!;

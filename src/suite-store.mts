@@ -15,6 +15,13 @@ export function assertSafePathComponent(value: string, label: string): void {
   }
 }
 
+export function assertSafeRef(value: string, label: string): string {
+  if (typeof value !== "string" || value.length === 0 || value.startsWith("-")) {
+    throw new Error(`invalid ${label}: ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
 export type { SuiteMeta };
 
 export type SuitePutMeta = { sha: string; branch: string; timestamp?: string };

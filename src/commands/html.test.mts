@@ -171,7 +171,7 @@ describe("coverage html", () => {
   });
 
   it("throws when --branch starts with -", () => {
-    expect(() => parseCoverageHtmlArgs(["--branch", "-main"])).toThrow(/invalid branch:/);
+    expect(() => parseCoverageHtmlArgs(["--branch", "-main"])).toThrow(/invalid branch/);
   });
 
   it("validates mutually exclusive store options", () => {
@@ -191,7 +191,7 @@ describe("coverage html", () => {
   });
 
   it("rejects empty --branch value", () => {
-    expect(() => parseCoverageHtmlArgs(["--branch", ""])).toThrow("--branch must not be empty");
+    expect(() => parseCoverageHtmlArgs(["--branch", ""])).toThrow(/invalid branch/);
   });
 
   it("applies default args when no argv is given", () => {
