@@ -234,3 +234,102 @@ describe("LCOV not ending in newline", () => {
     expect(cov["foo.ts"].s["1"]).toBe(1);
   });
 });
+
+it("handles branch with dash placeholder", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nBRDA:10,0,0,-\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+  expect(coverage["src/b.mts"]!.b["10-0"]).toEqual([0]);
+});
+
+it("handles missing values in branch DA and ignores invalid lines", () => {
+  const lcov = buf("TN:\nSF:src/c.mts\nBRDA:10,0,0\nBRDA:\nDA:1\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+  expect(coverage["src/c.mts"]!.b["10-0"]).toBeUndefined();
+  expect(coverage["src/c.mts"]!.s["1"]).toBeUndefined();
+});
+
+it("handles fnl without comma properly", () => {
+  const lcov = buf("TN:\nSF:src/d.mts\nFNL:1\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+  expect(coverage["src/d.mts"]!.fnMap).toEqual({});
+});
+
+it("handles fnda without comma properly", () => {
+  const lcov = buf("TN:\nSF:src/d.mts\nFNDA:1\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+  expect(coverage["src/d.mts"]!.f).toEqual({});
+});
+
+it("handles empty brda fields", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nBRDA:10,0,,\nBRDA:10,,,1\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+  expect(coverage["src/b.mts"]!.b["10-0"]).toBeUndefined();
+  expect(coverage["src/b.mts"]!.b["10-"]).toBeUndefined();
+});
+
+it("handles weird paths", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nBRDA:10\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+  expect(coverage["src/b.mts"]).toBeDefined();
+});
+
+it("handles BRDA without comma3", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nBRDA:10,0,1\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+});
+
+it("handles empty path DA properly", () => {
+  const lcov = buf("DA:1,1\nTN:\nSF:src/b.mts\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+  expect(coverage["src/b.mts"]).toBeDefined();
+});
+
+it("handles empty prefixes", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, ["src"]);
+  expect(coverage[""]).toBeUndefined();
+  expect(coverage["b.mts"]).toBeDefined();
+});
+
+it("handles empty normalized string correctly", () => {
+  const lcov = buf("TN:\nSF:src\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, ["src"]);
+  expect(coverage[""]).toBeUndefined();
+});
+
+it("handles normalized without slash but full match", () => {
+  const lcov = buf("TN:\nSF:src\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, ["src/"]);
+  expect(coverage[""]).toBeUndefined();
+});
+
+it("handles BRDA without comma2", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nBRDA:10,0\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+});
+
+it("handles BRDA with taken string missing", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nBRDA:10,0,1,x\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+});
+
+it("handles DA with invalid hit value", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nDA:10,x\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+});
+
+it("handles normalized blockKeys properly in BRDA accumulation", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nBRDA:10,my-block,0,-\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+  expect(coverage["src/b.mts"]!.b["10-my-block"]).toEqual([0]); // dash logic coverage
+});
+
+it("handles empty blockId", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nBRDA:10,,0,-\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+});
+
+it("handles empty branchId", () => {
+  const lcov = buf("TN:\nSF:src/b.mts\nBRDA:10,0,,-\nend_of_record\n");
+  const coverage = lcovBufferToIstanbul(lcov, []);
+});
