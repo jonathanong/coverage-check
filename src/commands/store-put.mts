@@ -85,11 +85,12 @@ function parseArgs(argv: string[]): StorePutArgs {
   }
   if (args.sha !== undefined) {
     assertSafePathComponent(args.sha, "sha");
-    if (args.sha.startsWith("-"))
-      throw new Error(`invalid sha (cannot start with '-'): ${JSON.stringify(args.sha)}`);
+    if (args.sha.startsWith("-")) {
+      throw new Error(`invalid sha: ${JSON.stringify(args.sha)}`);
+    }
   }
   if (args.branch !== undefined && (args.branch.length === 0 || args.branch.startsWith("-"))) {
-    throw new Error(`invalid branch (cannot start with '-'): ${JSON.stringify(args.branch)}`);
+    throw new Error(`invalid branch: ${JSON.stringify(args.branch)}`);
   }
 
   const store = makeStore({ fs: storeFs, s3: storeS3 })!;

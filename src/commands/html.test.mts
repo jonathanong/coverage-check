@@ -171,7 +171,7 @@ describe("coverage html", () => {
   });
 
   it("throws when --branch starts with -", () => {
-    expect(() => parseCoverageHtmlArgs(["--branch", "-main"])).toThrow(/cannot start with '-'/);
+    expect(() => parseCoverageHtmlArgs(["--branch", "-main"])).toThrow(/invalid branch:/);
   });
 
   it("validates mutually exclusive store options", () => {
