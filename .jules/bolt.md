@@ -1,3 +1,6 @@
 ## 2025-02-18 - String split vs loop for large files
 **Learning:** For extremely large text payloads like LCOV coverage files, using `String.prototype.split('\n')` can cause severe garbage collection overhead and memory spikes because it instantiates millions of small string objects in a large array.
 **Action:** Instead of `text.split("\n")`, manually traverse large text buffers with `while(start < text.length) { end = text.indexOf('\n', start); ... }`. This cuts execution time by 30-50% for parsing. Also, avoid mutating dependencies (like package.json updates) when optimizing code purely.
+## 2025-02-18 - Avoid array allocations in hot parsing loops
+**Learning:** In string parsing hot-paths (like processing millions of LCOV lines), `.split(",")` creates massive arrays that are immediately thrown away, causing GC pauses.
+**Action:** Always replace `.split()` with `.indexOf(",")` and `.slice()` in these specific hot loops. Add comments explaining *why* to ensure the optimization isn't accidentally removed. Also, do not test optimizations using temporary files in the root tree that could accidentally be added to the git tree, and be careful with `npm install` modifying lockfiles unnecessarily (use `npm ci` or `pnpm` if required).
