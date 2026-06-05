@@ -95,4 +95,53 @@ describe("loadRules", () => {
       "rule[0].patch_coverage_min must be a number between 0 and 100",
     );
   });
+
+  it("accepts no_coverage_drop: true as valid", () => {
+    const path = write(
+      "rules.yml",
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    no_coverage_drop: true\n",
+    );
+    expect(loadRules(path)).toEqual([
+      { paths: "backend/**", patch_coverage_min: 90, no_coverage_drop: true },
+    ]);
+  });
+
+  it("accepts no_coverage_drop: true with max_coverage_drop as valid", () => {
+    const path = write(
+      "rules.yml",
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    no_coverage_drop: true\n    max_coverage_drop: 0.5\n",
+    );
+    expect(loadRules(path)).toEqual([
+      {
+        paths: "backend/**",
+        patch_coverage_min: 90,
+        no_coverage_drop: true,
+        max_coverage_drop: 0.5,
+      },
+    ]);
+  });
+
+  it("throws when no_coverage_drop is not a boolean", () => {
+    const path = write(
+      "rules.yml",
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    no_coverage_drop: 'yes'\n",
+    );
+    expect(() => loadRules(path)).toThrow("must be a boolean");
+  });
+
+  it("throws when max_coverage_drop is negative", () => {
+    const path = write(
+      "rules.yml",
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    no_coverage_drop: true\n    max_coverage_drop: -1\n",
+    );
+    expect(() => loadRules(path)).toThrow("must be a non-negative number");
+  });
+
+  it("throws when max_coverage_drop is used without no_coverage_drop", () => {
+    const path = write(
+      "rules.yml",
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    max_coverage_drop: 0.5\n",
+    );
+    expect(() => loadRules(path)).toThrow("requires no_coverage_drop");
+  });
 });

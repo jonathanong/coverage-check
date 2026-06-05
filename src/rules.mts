@@ -21,6 +21,21 @@ export function loadRules(rulesPath: string): CoverageRule[] {
         `${rulesPath}: rule[${i}].patch_coverage_min must be a number between 0 and 100`,
       );
     }
+    const noDrop = rule.no_coverage_drop;
+    if (noDrop !== undefined && typeof noDrop !== "boolean") {
+      throw new Error(`${rulesPath}: rule[${i}].no_coverage_drop must be a boolean`);
+    }
+    const maxDrop = rule.max_coverage_drop;
+    if (maxDrop !== undefined) {
+      if (!Number.isFinite(maxDrop) || (maxDrop as number) < 0) {
+        throw new Error(`${rulesPath}: rule[${i}].max_coverage_drop must be a non-negative number`);
+      }
+      if (!noDrop) {
+        throw new Error(
+          `${rulesPath}: rule[${i}].max_coverage_drop requires no_coverage_drop: true`,
+        );
+      }
+    }
   }
   return parsed.rules;
 }

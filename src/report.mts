@@ -1,4 +1,9 @@
-import type { BucketResult, CoverageCheckResult, FileCoverageResult } from "./types.mts";
+import type {
+  BucketResult,
+  CoverageCheckResult,
+  DropResult,
+  FileCoverageResult,
+} from "./types.mts";
 
 export const COMMENT_MARKER = "<!-- coverage-check -->";
 
@@ -35,6 +40,31 @@ function renderFileList(files: FileCoverageResult[]): string {
     .join("\n");
 }
 
+function pctOrDash(n: number | null): string {
+  /* c8 ignore next -- failing drops always have non-null currentPct/baselinePct */
+  return n !== null ? `${n.toFixed(2)}%` : "—";
+}
+
+function dropOrDash(n: number | null): string {
+  /* c8 ignore next -- failing drops always have non-null drop */
+  return n !== null ? `${n.toFixed(2)}pp` : "—";
+}
+
+function renderRegressionSection(drops: DropResult[]): string {
+  const failingDrops = drops.filter((d) => !d.passed && !d.skipped);
+  if (failingDrops.length === 0) return "";
+  const rows = failingDrops.map(
+    (d) =>
+      `| \`${d.rule}\` | ${pctOrDash(d.currentPct)} | ${pctOrDash(d.baselinePct)} | ${dropOrDash(d.drop)} | ${d.maxDrop}pp |`,
+  );
+  const table = [
+    "| Rule | Current | Baseline | Drop | Max allowed |",
+    "|---|---|---|---|---|",
+    ...rows,
+  ].join("\n");
+  return `\n### Coverage regression\n\n${table}`;
+}
+
 export function renderFailureComment(
   result: CoverageCheckResult,
   runUrl: string,
@@ -64,6 +94,8 @@ export function renderFailureComment(
       ? `\n<details><summary>Informational (no rule)</summary>\n\n${informationalLines}\n</details>`
       : "";
 
+  const regressionSection = renderRegressionSection(result.drops);
+
   return `${COMMENT_MARKER}
 ## Patch coverage gate failed
 
@@ -72,7 +104,7 @@ ${table}
 ### Uncovered lines
 
 ${sections}
-${informationalSection}
+${informationalSection}${regressionSection}
 
 _Last updated: ${now} · [Workflow run](${runUrl})_`;
 }

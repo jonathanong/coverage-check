@@ -1089,4 +1089,163 @@ describe("with a real git repo and a known diff", () => {
     });
     expect(result).toBe(0);
   });
+
+  it("drops are all skipped when no store is configured", async () => {
+    const noDropRulesPath = join(tmpDir, "rules-drop.yml");
+    writeFileSync(
+      noDropRulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    no_coverage_drop: true\n",
+    );
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    const jsonPath = join(tmpDir, "result-drop-skipped.json");
+    const exitCode = await runCheck({
+      rules: noDropRulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: jsonPath,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(exitCode).toBe(0);
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result.drops).toHaveLength(1);
+    expect(result.drops[0].skipped).toBe(true);
+    expect(result.drops[0].passed).toBe(true);
+  });
+
+  it("drops pass when baseline coverage equals current", async () => {
+    const dropRulesPath = join(tmpDir, "rules-drop2.yml");
+    writeFileSync(
+      dropRulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    no_coverage_drop: true\n",
+    );
+    const storeDir2 = join(tmpDir, "store-drop");
+    mkdirSync(storeDir2);
+    const store2 = new FileSystemSuiteStore(storeDir2);
+    await store2.put(
+      "backend",
+      Buffer.from("SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n"),
+      { sha: "sha", branch: "main" },
+    );
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    const jsonPath = join(tmpDir, "result-drop-pass.json");
+    const exitCode = await runCheck({
+      rules: dropRulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: jsonPath,
+      stripPrefixes: [],
+      store: store2,
+      suite: null,
+    });
+    expect(exitCode).toBe(0);
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result.drops).toHaveLength(1);
+    expect(result.drops[0].passed).toBe(true);
+    expect(result.drops[0].skipped).toBe(false);
+  });
+
+  it("returns exit code 1 and includes failing drop in JSON when baseline is higher than current", async () => {
+    const dropRulesPath = join(tmpDir, "rules-drop3.yml");
+    writeFileSync(
+      dropRulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    const storeDir3 = join(tmpDir, "store-drop3");
+    mkdirSync(storeDir3);
+    const store3 = new FileSystemSuiteStore(storeDir3);
+    // Baseline stored under suite "backend-baseline" (excluded from current run via suite param).
+    // backend/bar.mts has 4/4 lines covered in baseline.
+    await store3.put(
+      "backend-baseline",
+      Buffer.from("SF:backend/foo.mts\nDA:1,1\nDA:2,1\nDA:3,1\nDA:4,1\nend_of_record\n"),
+      { sha: "sha", branch: "main" },
+    );
+    // Fresh artifacts: only 1/4 lines covered — regression vs baseline.
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nDA:3,0\nDA:4,0\nend_of_record\n",
+    );
+    const jsonPath = join(tmpDir, "result-drop-fail.json");
+    // Use suite: "current" so "backend-baseline" is NOT excluded and is included in both
+    // reports (merged lcov) and baseline. But the fresh artifact drives down coverage when
+    // merged with the baseline store data... actually we need a store suite that is excluded
+    // from current but counts in baseline. Use suite: "backend-baseline" to exclude it from
+    // reports[] so only fresh artifacts form the current lcov.
+    const exitCode = await runCheck({
+      rules: dropRulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: jsonPath,
+      stripPrefixes: [],
+      store: store3,
+      suite: "backend-baseline",
+    });
+    expect(exitCode).toBe(1);
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result.drops).toHaveLength(1);
+    expect(result.drops[0].passed).toBe(false);
+    expect(result.drops[0].skipped).toBe(false);
+    expect(result.drops[0].drop).toBeGreaterThan(0);
+  });
+
+  it("baseline stays null when store has suites but all get() return null", async () => {
+    // This test covers the false branches at check.mts lines 110 and 114:
+    // - `if (buf !== null)` false branch (buf === null from store.get in baseline loop)
+    // - `if (baselineReports.length > 0)` false branch (no baseline data → stays null)
+    const dropRulesPath = join(tmpDir, "rules-drop-null-store.yml");
+    writeFileSync(
+      dropRulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    no_coverage_drop: true\n",
+    );
+    // Provide artifact data so reports.length > 0 (prevents early return before baseline loop)
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    const nullStore = {
+      async list() {
+        return ["suite-a"];
+      },
+      async get(_suite: string, _opts?: { sha?: string; branch?: string }): Promise<Buffer | null> {
+        return null;
+      },
+      async put(): Promise<void> {},
+    };
+    const jsonPath = join(tmpDir, "result-null-baseline.json");
+    const exitCode = await runCheck({
+      rules: dropRulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: jsonPath,
+      stripPrefixes: [],
+      store: nullStore,
+      suite: null,
+    });
+    expect(exitCode).toBe(0);
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    // Drop is skipped because baseline is null (store returned null for all suites)
+    expect(result.drops).toHaveLength(1);
+    expect(result.drops[0].skipped).toBe(true);
+    expect(result.drops[0].passed).toBe(true);
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { collapseRanges, renderFailureComment, COMMENT_MARKER } from "./report.mts";
-import type { CoverageCheckResult } from "./types.mts";
+import type { CoverageCheckResult, DropResult } from "./types.mts";
 
 describe("collapseRanges", () => {
   it("returns empty string for empty input", () => {
@@ -27,6 +27,7 @@ describe("collapseRanges", () => {
 describe("renderFailureComment", () => {
   const result: CoverageCheckResult = {
     passed: false,
+    drops: [],
     buckets: [
       {
         rule: "backend/**",
@@ -97,6 +98,7 @@ describe("renderFailureComment", () => {
   it("renders — when bucket has no coverable lines", () => {
     const resultNoCoverable: CoverageCheckResult = {
       passed: false,
+      drops: [],
       buckets: [
         {
           rule: "backend/**",
@@ -116,6 +118,7 @@ describe("renderFailureComment", () => {
   it("renders _No line-level data available_ when bucket files have no uncovered lines", () => {
     const resultNoLines: CoverageCheckResult = {
       passed: false,
+      drops: [],
       buckets: [
         {
           rule: "backend/**",
@@ -138,5 +141,63 @@ describe("renderFailureComment", () => {
     };
     const comment = renderFailureComment(resultNoLines, "N/A", "2026-01-01T00:00:00.000Z");
     expect(comment).toContain("_No line-level data available_");
+  });
+
+  it("includes Coverage regression section and table when there are failing drops", () => {
+    const failingDrop: DropResult = {
+      rule: "backend/**",
+      currentPct: 91.23,
+      baselinePct: 95.0,
+      drop: 3.77,
+      maxDrop: 0,
+      passed: false,
+      skipped: false,
+    };
+    const resultWithDrop: CoverageCheckResult = {
+      ...result,
+      drops: [failingDrop],
+    };
+    const comment = renderFailureComment(
+      resultWithDrop,
+      "https://example.com/run/1",
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(comment).toContain("Coverage regression");
+    expect(comment).toContain("backend/**");
+    expect(comment).toContain("91.23%");
+    expect(comment).toContain("95.00%");
+    expect(comment).toContain("3.77pp");
+    expect(comment).toContain("0pp");
+  });
+
+  it("does not include regression table when all drops are skipped", () => {
+    const skippedDrop: DropResult = {
+      rule: "backend/**",
+      currentPct: null,
+      baselinePct: null,
+      drop: null,
+      maxDrop: 0,
+      passed: true,
+      skipped: true,
+    };
+    const resultWithSkipped: CoverageCheckResult = {
+      ...result,
+      drops: [skippedDrop],
+    };
+    const comment = renderFailureComment(
+      resultWithSkipped,
+      "https://example.com/run/1",
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(comment).not.toContain("Coverage regression");
+  });
+
+  it("does not include regression table when drops array is empty", () => {
+    const comment = renderFailureComment(
+      result,
+      "https://example.com/run/1",
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(comment).not.toContain("Coverage regression");
   });
 });
