@@ -1,0 +1,10 @@
+--- src/commands/check.test.mts
++++ src/commands/check.test.mts
+@@ -4,6 +4,7 @@
+ import { tmpdir } from "node:os";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { main, runCheck } from "./check.mts";
++import { parseCheckArgs } from "./check-args.mts";
+ import { FileSystemSuiteStore } from "../suite-store.mts";
+
+ describe("main argument validation", () => {

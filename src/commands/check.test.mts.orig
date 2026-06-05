@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main, runCheck } from "./check.mts";
-import { parseCheckArgs } from "./check-args.mts";
 import { FileSystemSuiteStore } from "../suite-store.mts";
 
 describe("main argument validation", () => {
@@ -1302,23 +1301,5 @@ describe("with a real git repo and a known diff", () => {
     } finally {
       stderrSpy.mockRestore();
     }
-  });
-});
-
-describe("parseCheckArgs argument injection validation", () => {
-  it("throws if --base starts with a hyphen", () => {
-    expect(() => parseCheckArgs(["--base", "-base-injection"])).toThrow(
-      /--base cannot start with a hyphen/,
-    );
-  });
-  it("throws if --head starts with a hyphen", () => {
-    expect(() => parseCheckArgs(["--head", "-head-injection"])).toThrow(
-      /--head cannot start with a hyphen/,
-    );
-  });
-  it("throws if --repo starts with a hyphen", () => {
-    expect(() => parseCheckArgs(["--repo", "-repo-injection"])).toThrow(
-      /--repo cannot start with a hyphen/,
-    );
   });
 });
