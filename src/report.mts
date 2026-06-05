@@ -53,10 +53,10 @@ function dropOrDash(n: number | null): string {
 function renderRegressionSection(drops: DropResult[]): string {
   const failingDrops = drops.filter((d) => !d.passed && !d.skipped);
   if (failingDrops.length === 0) return "";
-  const rows = failingDrops.map(
-    (d) =>
-      `| \`${d.rule.replaceAll("|", String.raw`\|`).replaceAll("`", String.raw`\``)}\` | ${pctOrDash(d.currentPct)} | ${pctOrDash(d.baselinePct)} | ${dropOrDash(d.drop)} | ${d.maxDrop}pp |`,
-  );
+  const rows = failingDrops.map((d) => {
+    const safeRule = d.rule.replaceAll("|", "\\|").replaceAll("`", "\\`");
+    return `| \`${safeRule}\` | ${pctOrDash(d.currentPct)} | ${pctOrDash(d.baselinePct)} | ${dropOrDash(d.drop)} | ${d.maxDrop}pp |`;
+  });
   const table = [
     "| Rule | Current | Baseline | Drop | Max allowed |",
     "|---|---|---|---|---|",
