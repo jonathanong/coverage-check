@@ -181,6 +181,26 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/da-nocomma.mts"]!.s)).toHaveLength(0);
   });
 
+  it("skips DA: line where hit count is not an integer", () => {
+    const lcov = buf(["TN:", "SF:src/da-notint.mts", "DA:5,NaN", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/da-notint.mts"]!.s)).toHaveLength(0);
+  });
+
+  it("skips BRDA: missing columns 2 and 3", () => {
+    const lcov = buf(
+      ["TN:", "SF:src/brda-nocomma.mts", "BRDA:5,0", "BRDA:5,0,0", "end_of_record"].join("\n"),
+    );
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/brda-nocomma.mts"]!.b)).toHaveLength(0);
+  });
+
+  it("handles BRDA blockKey without a dash fallback", () => {
+    const lcov = buf(["TN:", "SF:src/brda-nodash.mts", "BRDA:5,,0,1", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(coverage["src/brda-nodash.mts"]!.branchMap["5-"]).toBeDefined();
+  });
+
   it("skips FN: line with no comma (malformed)", () => {
     const lcov = buf(["TN:", "SF:src/m.mts", "FN:nocolonhere", "end_of_record"].join("\n"));
     const coverage = lcovBufferToIstanbul(lcov, []);

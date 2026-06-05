@@ -135,7 +135,7 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
       const branchId = rest.slice(c2 + 1, c3);
       const takenStr = rest.slice(c3 + 1);
       const taken = takenStr === "-" ? 0 : Number.parseInt(takenStr, 10);
-      if (!Number.isInteger(lineNo) || !blockId || !branchId || !Number.isInteger(taken)) continue;
+      if (!Number.isInteger(lineNo) || !branchId || !Number.isInteger(taken)) continue;
       const blockKey = `${lineNo}-${blockId}`;
       let fileBlocks = fileBranches.get(filePath);
       if (!fileBlocks) {
