@@ -43,7 +43,7 @@ export function computeCoverageDrop(
     const currentPct = cur.total === 0 ? null : (cur.hit / cur.total) * 100;
     const baselinePct = base.total === 0 ? null : (base.hit / base.total) * 100;
     const drop = currentPct !== null && baselinePct !== null ? baselinePct - currentPct : null;
-    const passed = drop === null || drop <= maxDrop;
+    const passed = drop === null || drop <= maxDrop + 1e-9;
     return { rule: rule.paths, currentPct, baselinePct, drop, maxDrop, passed, skipped: false };
   });
 }

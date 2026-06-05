@@ -103,16 +103,21 @@ export async function runCheck(args: CheckArgs): Promise<number> {
 
   let baseline: LcovData | null = null;
   if (args.store !== null) {
-    const suites = await args.store.list();
-    const baselineReports: LcovData[] = [];
-    for (const suite of suites) {
-      const buf = await args.store.get(suite, { branch });
-      if (buf !== null) {
-        baselineReports.push(parseLcov(buf.toString("utf8"), stripPrefixes));
+    try {
+      const suites = await args.store.list();
+      const baselineReports = (
+        await Promise.all(
+          suites.map(async (suite) => {
+            const buf = await args.store!.get(suite, { branch });
+            return buf !== null ? parseLcov(buf.toString("utf8"), stripPrefixes) : null;
+          }),
+        )
+      ).filter((report): report is LcovData => report !== null);
+      if (baselineReports.length > 0) {
+        baseline = mergeLcov(baselineReports);
       }
-    }
-    if (baselineReports.length > 0) {
-      baseline = mergeLcov(baselineReports);
+    } catch (err) {
+      stderr(`coverage-check: warning: failed to load baseline from store: ${String(err)}`);
     }
   }
 

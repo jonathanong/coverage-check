@@ -1248,4 +1248,58 @@ describe("with a real git repo and a known diff", () => {
     expect(result.drops[0].skipped).toBe(true);
     expect(result.drops[0].passed).toBe(true);
   });
+
+  it("logs a warning and skips the drop check when the store throws during baseline loading", async () => {
+    // Covers the catch block in check.mts: store.list() succeeds (returns []) on the first
+    // call (current-suite loop is a no-op), then throws on the second call (baseline loop).
+    const dropRulesPath = join(tmpDir, "rules-drop-throw-store.yml");
+    writeFileSync(
+      dropRulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    no_coverage_drop: true\n",
+    );
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    let listCallCount = 0;
+    const throwingStore = {
+      async list() {
+        listCallCount++;
+        if (listCallCount >= 2) throw new Error("simulated store network error");
+        return [];
+      },
+      async get(_suite: string, _opts?: { sha?: string; branch?: string }): Promise<Buffer | null> {
+        return null;
+      },
+      async put(): Promise<void> {},
+    };
+    const stderrLines: string[] = [];
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      stderrLines.push(String(chunk));
+      return true;
+    });
+    try {
+      const jsonPath = join(tmpDir, "result-throw-baseline.json");
+      const exitCode = await runCheck({
+        rules: dropRulesPath,
+        artifacts: artifactsDir,
+        base: baseSha,
+        head: headSha,
+        pr: null,
+        repo: "",
+        json: jsonPath,
+        stripPrefixes: [],
+        store: throwingStore,
+        suite: null,
+      });
+      expect(exitCode).toBe(0);
+      expect(stderrLines.some((l) => l.includes("failed to load baseline from store"))).toBe(true);
+      const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+      // Drop is skipped because the try-catch caught the store error → baseline stays null
+      expect(result.drops).toHaveLength(1);
+      expect(result.drops[0].skipped).toBe(true);
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
 });
