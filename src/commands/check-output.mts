@@ -12,26 +12,25 @@ function fmtDrop(n: number | null): string {
   return n === null ? "—" : `${n.toFixed(2)}pp`;
 }
 
+function lcovContributesToDiff(sourceLcov: LcovData, diff: DiffLines): boolean {
+  for (const [file, changedLines] of diff) {
+    const fileLines = sourceLcov.get(file);
+    if (fileLines) {
+      for (const lineNo of changedLines) {
+        if (fileLines.has(lineNo)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function warnNonContributing(
   parsedSources: { name: string; lcov: LcovData }[],
   diff: DiffLines,
 ): void {
   if (diff.size === 0) return;
   for (const { name, lcov: sourceLcov } of parsedSources) {
-    let contributes = false;
-    for (const [file, changedLines] of diff) {
-      const fileLines = sourceLcov.get(file);
-      if (fileLines) {
-        for (const lineNo of changedLines) {
-          if (fileLines.has(lineNo)) {
-            contributes = true;
-            break;
-          }
-        }
-      }
-      if (contributes) break;
-    }
-    if (!contributes) {
+    if (!lcovContributesToDiff(sourceLcov, diff)) {
       stderr(
         `coverage-check: warning: coverage from ${name} contributed 0 coverable lines to the patch result. This may indicate a path prefix mismatch.`,
       );

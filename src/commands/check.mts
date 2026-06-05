@@ -109,7 +109,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
         await Promise.all(
           suites.map(async (suite) => {
             const buf = await args.store!.get(suite, { branch });
-            return buf !== null ? parseLcov(buf.toString("utf8"), stripPrefixes) : null;
+            return buf === null ? null : parseLcov(buf.toString("utf8"), stripPrefixes);
           }),
         )
       ).filter((report): report is LcovData => report !== null);

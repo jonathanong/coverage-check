@@ -3,14 +3,13 @@ import { matchRule } from "./rules.mts";
 
 function fileTotals(
   lcov: LcovData,
-  rulePaths: string,
+  targetRule: CoverageRule,
   allRules: CoverageRule[],
 ): { hit: number; total: number } {
   let hit = 0;
   let total = 0;
   for (const [file, lines] of lcov) {
-    const matched = matchRule(file, allRules);
-    if (matched?.paths !== rulePaths) continue;
+    if (matchRule(file, allRules) !== targetRule) continue;
     for (const count of lines.values()) {
       total++;
       if (count > 0) hit++;
@@ -38,8 +37,8 @@ export function computeCoverageDrop(
         skipped: true,
       };
     }
-    const cur = fileTotals(current, rule.paths, rules);
-    const base = fileTotals(baseline, rule.paths, rules);
+    const cur = fileTotals(current, rule, rules);
+    const base = fileTotals(baseline, rule, rules);
     const currentPct = cur.total === 0 ? null : (cur.hit / cur.total) * 100;
     const baselinePct = base.total === 0 ? null : (base.hit / base.total) * 100;
     const drop = currentPct !== null && baselinePct !== null ? baselinePct - currentPct : null;

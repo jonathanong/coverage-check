@@ -75,10 +75,13 @@ export function buildSummaryMarkdown(
   if (result.drops.length > 0) {
     const dropRows = result.drops
       .map((d) => {
-        const status = d.skipped ? "⏭️" : d.passed ? "✅" : "❌";
-        const baselinePct = d.baselinePct !== null ? `${d.baselinePct.toFixed(2)}%` : "—";
-        const currentPct = d.currentPct !== null ? `${d.currentPct.toFixed(2)}%` : "—";
-        const drop = d.drop !== null ? `${d.drop.toFixed(2)}pp` : "—";
+        let status: string;
+        if (d.skipped) status = "⏭️";
+        else if (d.passed) status = "✅";
+        else status = "❌";
+        const baselinePct = d.baselinePct === null ? "—" : `${d.baselinePct.toFixed(2)}%`;
+        const currentPct = d.currentPct === null ? "—" : `${d.currentPct.toFixed(2)}%`;
+        const drop = d.drop === null ? "—" : `${d.drop.toFixed(2)}pp`;
         return `| ${codeSpan(d.rule)} | ${d.maxDrop}pp | ${baselinePct} | ${currentPct} | ${drop} | ${status} |`;
       })
       .join("\n");

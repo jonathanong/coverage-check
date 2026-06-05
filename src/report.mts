@@ -42,12 +42,12 @@ function renderFileList(files: FileCoverageResult[]): string {
 
 function pctOrDash(n: number | null): string {
   /* c8 ignore next -- failing drops always have non-null currentPct/baselinePct */
-  return n !== null ? `${n.toFixed(2)}%` : "—";
+  return n === null ? "—" : `${n.toFixed(2)}%`;
 }
 
 function dropOrDash(n: number | null): string {
   /* c8 ignore next -- failing drops always have non-null drop */
-  return n !== null ? `${n.toFixed(2)}pp` : "—";
+  return n === null ? "—" : `${n.toFixed(2)}pp`;
 }
 
 function renderRegressionSection(drops: DropResult[]): string {
@@ -55,7 +55,7 @@ function renderRegressionSection(drops: DropResult[]): string {
   if (failingDrops.length === 0) return "";
   const rows = failingDrops.map(
     (d) =>
-      `| \`${d.rule}\` | ${pctOrDash(d.currentPct)} | ${pctOrDash(d.baselinePct)} | ${dropOrDash(d.drop)} | ${d.maxDrop}pp |`,
+      `| \`${d.rule.replace(/\|/g, "\\|").replace(/`/g, "\\`")}\` | ${pctOrDash(d.currentPct)} | ${pctOrDash(d.baselinePct)} | ${dropOrDash(d.drop)} | ${d.maxDrop}pp |`,
   );
   const table = [
     "| Rule | Current | Baseline | Drop | Max allowed |",
