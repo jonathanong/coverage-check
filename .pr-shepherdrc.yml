@@ -4,3 +4,5 @@ ignoreChecks:
   # strict for test code which naturally repeats fixture patterns. SonarCloud
   # is not a required branch-protection check (merge: UNSTABLE, not BLOCKED).
   - SonarCloud Code Analysis
+  # Kilo Code Review stays QUEUED indefinitely and is not a required check.
+  - Kilo Code Review
