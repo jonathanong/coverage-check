@@ -4,12 +4,12 @@ const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
 
 function fmtPct(n: number | null): string {
-  return n !== null ? `${n.toFixed(2)}%` : "—";
+  return n === null ? "—" : `${n.toFixed(2)}%`;
 }
 
 function fmtDrop(n: number | null): string {
   /* c8 ignore next -- failing drops always have non-null drop (drop===null implies passed===true) */
-  return n !== null ? `${n.toFixed(2)}pp` : "—";
+  return n === null ? "—" : `${n.toFixed(2)}pp`;
 }
 
 export function warnNonContributing(

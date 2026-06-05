@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { warnNonContributing, printDropOutput } from "./check-output.mts";
-import type { DropResult } from "../types.mts";
-import type { LcovData, DiffLines } from "../types.mts";
+import type { DropResult, LcovData, DiffLines } from "../types.mts";
 
 function makeLcov(files: Record<string, Record<number, number>>): LcovData {
   const lcov: LcovData = new Map();
@@ -94,7 +93,7 @@ describe("printDropOutput", () => {
       {
         rule: "web/**",
         currentPct: 95.5,
-        baselinePct: 95.0,
+        baselinePct: 95,
         drop: -0.5,
         maxDrop: 0,
         passed: true,
@@ -135,9 +134,9 @@ describe("printDropOutput", () => {
     const drops: DropResult[] = [
       {
         rule: "backend/**",
-        currentPct: 80.0,
-        baselinePct: 95.0,
-        drop: 15.0,
+        currentPct: 80,
+        baselinePct: 95,
+        drop: 15,
         maxDrop: 0,
         passed: false,
         skipped: false,
@@ -167,8 +166,8 @@ describe("printDropOutput", () => {
       },
       {
         rule: "web/**",
-        currentPct: 90.0,
-        baselinePct: 90.0,
+        currentPct: 90,
+        baselinePct: 90,
         drop: 0,
         maxDrop: 0,
         passed: true,
@@ -176,9 +175,9 @@ describe("printDropOutput", () => {
       },
       {
         rule: "cloudflare-worker/**",
-        currentPct: 85.0,
-        baselinePct: 100.0,
-        drop: 15.0,
+        currentPct: 85,
+        baselinePct: 100,
+        drop: 15,
         maxDrop: 0,
         passed: false,
         skipped: false,

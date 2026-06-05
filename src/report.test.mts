@@ -147,7 +147,7 @@ describe("renderFailureComment", () => {
     const failingDrop: DropResult = {
       rule: "backend/**",
       currentPct: 91.23,
-      baselinePct: 95.0,
+      baselinePct: 95,
       drop: 3.77,
       maxDrop: 0,
       passed: false,

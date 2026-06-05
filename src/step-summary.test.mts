@@ -171,7 +171,7 @@ describe("buildSummaryMarkdown", () => {
       {
         rule: "backend/**",
         currentPct: 91.23,
-        baselinePct: 95.0,
+        baselinePct: 95,
         drop: 3.77,
         maxDrop: 0,
         passed: false,
@@ -179,9 +179,9 @@ describe("buildSummaryMarkdown", () => {
       },
       {
         rule: "web/**",
-        currentPct: 99.0,
-        baselinePct: 98.0,
-        drop: -1.0,
+        currentPct: 99,
+        baselinePct: 98,
+        drop: -1,
         maxDrop: 1,
         passed: true,
         skipped: false,
