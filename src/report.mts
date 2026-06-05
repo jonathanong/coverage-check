@@ -55,7 +55,7 @@ function renderRegressionSection(drops: DropResult[]): string {
   if (failingDrops.length === 0) return "";
   const rows = failingDrops.map(
     (d) =>
-      `| \`${d.rule.replace(/\|/g, "\\|").replace(/`/g, "\\`")}\` | ${pctOrDash(d.currentPct)} | ${pctOrDash(d.baselinePct)} | ${dropOrDash(d.drop)} | ${d.maxDrop}pp |`,
+      `| \`${d.rule.replaceAll("|", String.raw`\|`).replaceAll("`", String.raw`\``)}\` | ${pctOrDash(d.currentPct)} | ${pctOrDash(d.baselinePct)} | ${dropOrDash(d.drop)} | ${d.maxDrop}pp |`,
   );
   const table = [
     "| Rule | Current | Baseline | Drop | Max allowed |",
