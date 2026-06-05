@@ -59,15 +59,27 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
       case "--artifacts":
         args.artifacts = val();
         break;
-      case "--base":
-        args.base = val();
+      case "--base": {
+        const v = val();
+        // Security: Prevent argument injection in git child process commands
+        if (v.startsWith("-")) throw new Error(`--base cannot start with a hyphen`);
+        args.base = v;
         break;
-      case "--head":
-        args.head = val();
+      }
+      case "--head": {
+        const v = val();
+        // Security: Prevent argument injection in git child process commands
+        if (v.startsWith("-")) throw new Error(`--head cannot start with a hyphen`);
+        args.head = v;
         break;
-      case "--repo":
-        args.repo = val();
+      }
+      case "--repo": {
+        const v = val();
+        // Security: Prevent argument injection in gh child process commands
+        if (v.startsWith("-")) throw new Error(`--repo cannot start with a hyphen`);
+        args.repo = v;
         break;
+      }
       case "--json":
         args.json = val();
         break;
