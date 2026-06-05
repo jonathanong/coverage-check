@@ -4,6 +4,22 @@ import { matchesGlob } from "node:path";
 import yaml from "js-yaml";
 import type { CoverageRule, CoverageRules } from "./types.mts";
 
+function validateDropRuleFields(rule: Partial<CoverageRule>, i: number, rulesPath: string): void {
+  const noDrop = rule.no_coverage_drop;
+  if (noDrop !== undefined && typeof noDrop !== "boolean") {
+    throw new Error(`${rulesPath}: rule[${i}].no_coverage_drop must be a boolean`);
+  }
+  const maxDrop = rule.max_coverage_drop;
+  if (maxDrop !== undefined) {
+    if (!Number.isFinite(maxDrop) || maxDrop < 0) {
+      throw new Error(`${rulesPath}: rule[${i}].max_coverage_drop must be a non-negative number`);
+    }
+    if (!noDrop) {
+      throw new Error(`${rulesPath}: rule[${i}].max_coverage_drop requires no_coverage_drop: true`);
+    }
+  }
+}
+
 export function loadRules(rulesPath: string): CoverageRule[] {
   const text = readFileSync(rulesPath, "utf8");
   const parsed = yaml.load(text) as CoverageRules;
@@ -21,6 +37,7 @@ export function loadRules(rulesPath: string): CoverageRule[] {
         `${rulesPath}: rule[${i}].patch_coverage_min must be a number between 0 and 100`,
       );
     }
+    validateDropRuleFields(rule, i, rulesPath);
   }
   return parsed.rules;
 }

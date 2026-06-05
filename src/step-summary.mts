@@ -71,19 +71,32 @@ export function buildSummaryMarkdown(
     ruleRows || "| — | — | — | — |",
   ].join("\n");
 
+  let dropSection = "";
+  if (result.drops.length > 0) {
+    const dropRows = result.drops
+      .map((d) => {
+        let status: string;
+        if (d.skipped) status = "⏭️";
+        else if (d.passed) status = "✅";
+        else status = "❌";
+        const baselinePct = d.baselinePct === null ? "—" : `${d.baselinePct.toFixed(2)}%`;
+        const currentPct = d.currentPct === null ? "—" : `${d.currentPct.toFixed(2)}%`;
+        const drop = d.drop === null ? "—" : `${d.drop.toFixed(2)}pp`;
+        return `| ${codeSpan(d.rule)} | ${d.maxDrop}pp | ${baselinePct} | ${currentPct} | ${drop} | ${status} |`;
+      })
+      .join("\n");
+    const dropTable = [
+      "| Rule | Max drop | Baseline | Current | Drop | Status |",
+      "|---|---|---|---|---|---|",
+      dropRows,
+    ].join("\n");
+    dropSection = `\n### Coverage drop\n\n${dropTable}\n`;
+  }
+
   const overall = result.passed ? "✅ passed" : "❌ failed";
   const runLink = runUrl !== "N/A" ? `\n\n_[View run](${runUrl})_` : "";
 
-  return `## Coverage summary — ${overall}
-
-### Suite totals
-
-${suiteTable}
-
-### Patch coverage
-
-${ruleTable}${runLink}
-`;
+  return `## Coverage summary — ${overall}\n\n### Suite totals\n\n${suiteTable}\n\n### Patch coverage\n\n${ruleTable}${dropSection}${runLink}\n`;
 }
 
 export function writeSummary(

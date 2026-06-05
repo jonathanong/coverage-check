@@ -1,6 +1,8 @@
 export type CoverageRule = {
   paths: string;
   patch_coverage_min: number;
+  no_coverage_drop?: boolean;
+  max_coverage_drop?: number;
 };
 
 /** Map from repo-root-relative file path to map of added line number → trimmed source text. */
@@ -33,8 +35,19 @@ export type BucketResult = {
   passed: boolean;
 };
 
+export type DropResult = {
+  rule: string;
+  currentPct: number | null; // null if no current data
+  baselinePct: number | null; // null if no baseline data
+  drop: number | null; // baselinePct - currentPct, null if either is null
+  maxDrop: number; // max_coverage_drop ?? 0
+  passed: boolean;
+  skipped: boolean; // true when baseline unavailable (non-blocking)
+};
+
 export type CoverageCheckResult = {
   buckets: BucketResult[];
+  drops: DropResult[];
   informational: FileCoverageResult[];
   passed: boolean;
 };

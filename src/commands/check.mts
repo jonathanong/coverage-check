@@ -5,11 +5,13 @@ import { getChangedLines } from "../diff-parser.mts";
 import { getChangedLineContent } from "../diff-parser-content.mts";
 import { loadRules } from "../rules.mts";
 import { computePatchCoverage } from "../patch-coverage.mts";
+import { computeCoverageDrop } from "../coverage-drop.mts";
 import { collapseRanges, renderFailureComment } from "../report.mts";
 import { upsertComment } from "../github-comment.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { writeSummary } from "../step-summary.mts";
 import { parseCheckArgs } from "./check-args.mts";
+import { warnNonContributing, printDropOutput } from "./check-output.mts";
 import type { CheckArgs } from "./check-args.mts";
 import type { SuiteSource } from "../step-summary.mts";
 import type { DiffLineContent, LcovData } from "../types.mts";
@@ -97,32 +99,32 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     return 2;
   }
 
-  if (diff.size > 0) {
-    for (const { name, lcov: sourceLcov } of parsedSources) {
-      let contributes = false;
-      for (const [file, changedLines] of diff) {
-        const fileLines = sourceLcov.get(file);
-        if (fileLines) {
-          for (const lineNo of changedLines) {
-            if (fileLines.has(lineNo)) {
-              contributes = true;
-              break;
-            }
-          }
-        }
-        if (contributes) break;
+  warnNonContributing(parsedSources, diff);
+
+  let baseline: LcovData | null = null;
+  if (args.store !== null) {
+    try {
+      const suites = await args.store.list();
+      const baselineReports = (
+        await Promise.all(
+          suites.map(async (suite) => {
+            const buf = await args.store!.get(suite, { branch });
+            return buf === null ? null : parseLcov(buf.toString("utf8"), stripPrefixes);
+          }),
+        )
+      ).filter((report): report is LcovData => report !== null);
+      if (baselineReports.length > 0) {
+        baseline = mergeLcov(baselineReports);
       }
-      if (!contributes) {
-        stderr(
-          `coverage-check: warning: coverage from ${name} contributed 0 coverable lines to the patch result. This may indicate a path prefix mismatch.`,
-        );
-      }
+    } catch (err) {
+      stderr(`coverage-check: warning: failed to load baseline from store: ${String(err)}`);
     }
   }
 
   const { buckets, informational } = computePatchCoverage(diff, lcov, rules);
-  const passed = buckets.every((b) => b.passed);
-  const result = { buckets, informational, passed };
+  const drops = computeCoverageDrop(lcov, baseline, rules);
+  const passed = buckets.every((b) => b.passed) && drops.every((d) => d.passed || d.skipped);
+  const result = { buckets, drops, informational, passed };
 
   if (args.json) {
     writeFileSync(args.json, JSON.stringify(result, null, 2));
@@ -164,6 +166,8 @@ export async function runCheck(args: CheckArgs): Promise<number> {
       stdout(`  ${bucket.rule}: ${pct} ✓`);
     }
   }
+
+  printDropOutput(drops);
 
   const summaryFile =
     args.summaryFile !== undefined

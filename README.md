@@ -135,6 +135,33 @@ rules:
 
 Rules are matched in order; the first match wins. Files in the diff not matched by any rule are reported as informational (not gated).
 
+### `no_coverage_drop`
+
+Add `no_coverage_drop: true` to a rule to also gate total line-coverage regression — not just patch lines. When enabled, the check fails if the overall line-coverage percentage of files matched by that rule falls below the `main` baseline stored in the suite store.
+
+```yaml
+rules:
+  - paths: backend/scripts/**
+    patch_coverage_min: 0 # exempt from patch gate
+  - paths: backend/**
+    patch_coverage_min: 95
+    no_coverage_drop: true # also gate overall regression
+  - paths: web/**
+    patch_coverage_min: 80
+    no_coverage_drop: true
+    max_coverage_drop: 0.5 # allow up to 0.5 percentage-point drop
+```
+
+`max_coverage_drop` (default `0`) sets the tolerance in percentage points. First-match-wins applies: `backend/scripts/**` files are matched by the earlier rule and are not included in the `backend/**` total.
+
+**Requirements:**
+
+- A suite store (`--store-s3` or `--store-fs`) must be configured on the `check` command.
+- A baseline must exist in the store (written by `store-put --sha ... --branch main` on main pushes).
+- When no baseline is available (e.g. fork PRs without store access), the no-drop check is **skipped non-blockingly** with a warning — the patch coverage gate still runs.
+
+First-match-wins means that if you have a more specific rule before a broader one (e.g. `backend/scripts/**` before `backend/**`), only files matched by the broader rule's first-match contribute to its total — scripts are excluded from the broader `backend/**` aggregate.
+
 ## CLI reference
 
 ### `coverage-check check`

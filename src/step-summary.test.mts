@@ -4,16 +4,18 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildSummaryMarkdown, writeSummary } from "./step-summary.mts";
 import type { SuiteSource } from "./step-summary.mts";
-import type { CoverageCheckResult } from "./types.mts";
+import type { CoverageCheckResult, DropResult } from "./types.mts";
 
 const passResult: CoverageCheckResult = {
   passed: true,
+  drops: [],
   buckets: [{ rule: "backend/**", threshold: 90, coverable: 10, hit: 10, passed: true, files: [] }],
   informational: [],
 };
 
 const failResult: CoverageCheckResult = {
   passed: false,
+  drops: [],
   buckets: [{ rule: "backend/**", threshold: 90, coverable: 10, hit: 8, passed: false, files: [] }],
   informational: [],
 };
@@ -107,6 +109,7 @@ describe("buildSummaryMarkdown", () => {
   it("shows — in rule table when bucket has no coverable lines", () => {
     const noCoverableResult: CoverageCheckResult = {
       passed: false,
+      drops: [],
       buckets: [
         { rule: "backend/**", threshold: 90, coverable: 0, hit: 0, passed: false, files: [] },
       ],
@@ -122,7 +125,12 @@ describe("buildSummaryMarkdown", () => {
   });
 
   it("renders empty-rule placeholder row when no buckets provided", () => {
-    const emptyResult: CoverageCheckResult = { passed: true, buckets: [], informational: [] };
+    const emptyResult: CoverageCheckResult = {
+      passed: true,
+      drops: [],
+      buckets: [],
+      informational: [],
+    };
     const md = buildSummaryMarkdown([], emptyResult, "N/A");
     expect(md).toContain("| — | — | — | — |");
   });
@@ -147,6 +155,7 @@ describe("buildSummaryMarkdown", () => {
     };
     const pipeResult: CoverageCheckResult = {
       passed: true,
+      drops: [],
       buckets: [
         { rule: "back|`end/**", threshold: 90, coverable: 10, hit: 10, passed: true, files: [] },
       ],
@@ -155,6 +164,53 @@ describe("buildSummaryMarkdown", () => {
     const md = buildSummaryMarkdown([pipeSource], pipeResult, "N/A", "feat|`branch");
     expect(md).toContain("`` back\\|`end ``");
     expect(md).toContain("feat\\|`branch");
+  });
+
+  it("shows Coverage drop section with all three statuses", () => {
+    const drops: DropResult[] = [
+      {
+        rule: "backend/**",
+        currentPct: 91.23,
+        baselinePct: 95,
+        drop: 3.77,
+        maxDrop: 0,
+        passed: false,
+        skipped: false,
+      },
+      {
+        rule: "web/**",
+        currentPct: 99,
+        baselinePct: 98,
+        drop: -1,
+        maxDrop: 1,
+        passed: true,
+        skipped: false,
+      },
+      {
+        rule: "cloudflare-worker/**",
+        currentPct: null,
+        baselinePct: null,
+        drop: null,
+        maxDrop: 0,
+        passed: true,
+        skipped: true,
+      },
+    ];
+    const resultWithDrops: CoverageCheckResult = { ...passResult, drops };
+    const md = buildSummaryMarkdown([], resultWithDrops, "N/A");
+    expect(md).toContain("Coverage drop");
+    expect(md).toContain("backend/**");
+    expect(md).toContain("91.23%");
+    expect(md).toContain("95.00%");
+    expect(md).toContain("3.77pp");
+    expect(md).toContain("❌");
+    expect(md).toContain("✅");
+    expect(md).toContain("⏭️");
+  });
+
+  it("omits Coverage drop section when drops array is empty", () => {
+    const md = buildSummaryMarkdown([], passResult, "N/A");
+    expect(md).not.toContain("Coverage drop");
   });
 });
 
