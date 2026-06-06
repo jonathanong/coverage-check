@@ -181,6 +181,27 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/da-nocomma.mts"]!.s)).toHaveLength(0);
   });
 
+  it("skips DA: line with invalid numbers", () => {
+    const lcov = buf(["TN:", "SF:src/da-invalid.mts", "DA:abc,def", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/da-invalid.mts"]!.s)).toHaveLength(0);
+  });
+
+  it("skips BRDA: line with missing commas", () => {
+    const lcov = buf(
+      [
+        "TN:",
+        "SF:src/brda-missing-commas.mts",
+        "BRDA:1",
+        "BRDA:1,0",
+        "BRDA:1,0,0",
+        "end_of_record",
+      ].join("\n"),
+    );
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/brda-missing-commas.mts"]!.b)).toHaveLength(0);
+  });
+
   it("skips FN: line with no comma (malformed)", () => {
     const lcov = buf(["TN:", "SF:src/m.mts", "FN:nocolonhere", "end_of_record"].join("\n"));
     const coverage = lcovBufferToIstanbul(lcov, []);

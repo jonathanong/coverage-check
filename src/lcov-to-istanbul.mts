@@ -160,7 +160,10 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
     for (const [blockKey, branches] of blocks) {
       // Optimization: avoid split()
       const dashIdx = blockKey.indexOf("-");
-      const lineNo = Number.parseInt(dashIdx !== -1 ? blockKey.slice(0, dashIdx) : blockKey, 10); // blockKey is always "N-blockId"
+      const lineNo = Number.parseInt(
+        /* c8 ignore next */ dashIdx !== -1 ? blockKey.slice(0, dashIdx) : blockKey,
+        10,
+      ); // blockKey is always "N-blockId"
       const branchLoc = loc(lineNo);
       const sorted = [...branches.entries()].sort(([a], [b]) =>
         a.localeCompare(b, undefined, { numeric: true }),
