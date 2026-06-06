@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeGitCString, parseDiff } from "./diff-parser.mts";
+import { decodeGitCString, parseDiff, runGitDiff } from "./diff-parser.mts";
 import { parseDiffWithContent } from "./diff-parser-content.mts";
 
 const SIMPLE_DIFF = `
@@ -230,6 +230,16 @@ describe("parseDiff with text not ending in newline", () => {
     const rawDiff = "diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1,1 +1,1 @@\n-foo\n+bar";
     const res = parseDiff(rawDiff);
     expect([...(res.get("foo") ?? [])]).toEqual([1]);
+  });
+});
+
+describe("runGitDiff", () => {
+  it("throws an error when baseRef starts with a hyphen (argument injection prevention)", async () => {
+    await expect(runGitDiff("-main", "HEAD")).rejects.toThrow("Invalid baseRef: -main");
+  });
+
+  it("throws an error when headRef starts with a hyphen (argument injection prevention)", async () => {
+    await expect(runGitDiff("main", "-HEAD")).rejects.toThrow("Invalid headRef: -HEAD");
   });
 });
 

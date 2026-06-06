@@ -111,6 +111,10 @@ export function parseDiff(text: string): DiffLines {
 
 /** Runs git merge-base + git diff and returns the raw diff text. Internal shared helper. */
 export async function runGitDiff(baseRef: string, headRef: string): Promise<string> {
+  // Security check: prevent argument injection by disallowing refs starting with a hyphen
+  if (baseRef.startsWith("-")) throw new Error(`Invalid baseRef: ${baseRef}`);
+  if (headRef.startsWith("-")) throw new Error(`Invalid headRef: ${headRef}`);
+
   const { spawn } = await import("node:child_process");
   const spawnProcess = (cmd: string, args: string[]) =>
     new Promise<string>((resolve, reject) => {
