@@ -162,18 +162,10 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/k3.mts"]!.b)).toHaveLength(0);
   });
 
-  it("handles blockKey with no hyphen", () => {
-    // Though a well-formed LCOV always has "N-blockId", we test the fallback logic
-    // We achieve this by crafting an accumulator map directly if possible, or
-    // we just use a malformed BRDA blockId that has no hyphen if that's what forms it.
-    // Wait, blockKey is `${lineNo}-${blockId}`. It ALWAYS has a hyphen in `lcovBufferToIstanbul`.
-    // The ternary `dashIdx === -1 ? blockKey : blockKey.slice(0, dashIdx)` is a defensive fallback.
-    // Since we can't trigger it via normal parsing, we will leave it or remove it. But we MUST hit 100% coverage.
-    // Let's remove the fallback in the source file since blockKey is literally `${lineNo}-${blockId}`.
-  });
-
   it("skips BRDA line with non-integer hit count", () => {
-    const lcov = buf(["TN:", "SF:src/k4.mts", "BRDA:10,0,0,notanumber", "end_of_record"].join("\n"));
+    const lcov = buf(
+      ["TN:", "SF:src/k4.mts", "BRDA:10,0,0,notanumber", "end_of_record"].join("\n"),
+    );
     const coverage = lcovBufferToIstanbul(lcov, []);
     // No branches recorded since hit count is not parseable and not '-'
     expect(Object.keys(coverage["src/k4.mts"]!.b)).toHaveLength(0);
@@ -221,7 +213,9 @@ describe("lcovBufferToIstanbul", () => {
   });
 
   it("skips DA: line with non-integer lineNo", () => {
-    const lcov = buf(["TN:", "SF:src/da-notanumber.mts", "DA:notanumber,1", "end_of_record"].join("\n"));
+    const lcov = buf(
+      ["TN:", "SF:src/da-notanumber.mts", "DA:notanumber,1", "end_of_record"].join("\n"),
+    );
     const coverage = lcovBufferToIstanbul(lcov, []);
     expect(Object.keys(coverage["src/da-notanumber.mts"]!.s)).toHaveLength(0);
   });
