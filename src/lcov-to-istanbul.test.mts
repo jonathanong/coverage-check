@@ -148,27 +148,18 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/k.mts"]!.b)).toHaveLength(0);
   });
 
-  it("skips BRDA line with empty blockId", () => {
-    const lcov = buf(["TN:", "SF:src/k2.mts", "BRDA:10,,0,1", "end_of_record"].join("\n"));
+  it("skips BRDA lines with missing or non-integer components", () => {
+    const lines = [
+      "TN:",
+      "SF:src/k-bad.mts",
+      "BRDA:10,,0,1", // empty blockId
+      "BRDA:10,0,,1", // empty branchId
+      "BRDA:10,0,0,notanumber", // non-integer hit count
+      "end_of_record",
+    ];
+    const lcov = buf(lines.join("\n"));
     const coverage = lcovBufferToIstanbul(lcov, []);
-    // No branches recorded since blockId is empty
-    expect(Object.keys(coverage["src/k2.mts"]!.b)).toHaveLength(0);
-  });
-
-  it("skips BRDA line with empty branchId", () => {
-    const lcov = buf(["TN:", "SF:src/k3.mts", "BRDA:10,0,,1", "end_of_record"].join("\n"));
-    const coverage = lcovBufferToIstanbul(lcov, []);
-    // No branches recorded since branchId is empty
-    expect(Object.keys(coverage["src/k3.mts"]!.b)).toHaveLength(0);
-  });
-
-  it("skips BRDA line with non-integer hit count", () => {
-    const lcov = buf(
-      ["TN:", "SF:src/k4.mts", "BRDA:10,0,0,notanumber", "end_of_record"].join("\n"),
-    );
-    const coverage = lcovBufferToIstanbul(lcov, []);
-    // No branches recorded since hit count is not parseable and not '-'
-    expect(Object.keys(coverage["src/k4.mts"]!.b)).toHaveLength(0);
+    expect(Object.keys(coverage["src/k-bad.mts"]!.b)).toHaveLength(0);
   });
 
   it("skips unrecognized line types when inside an SF block", () => {
@@ -212,18 +203,12 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/da-nocomma.mts"]!.s)).toHaveLength(0);
   });
 
-  it("skips DA: line with non-integer lineNo", () => {
+  it("skips DA: line with non-integer lineNo or hit count", () => {
     const lcov = buf(
-      ["TN:", "SF:src/da-notanumber.mts", "DA:notanumber,1", "end_of_record"].join("\n"),
+      ["TN:", "SF:src/da-bad.mts", "DA:notanumber,1", "DA:5,bad", "end_of_record"].join("\n"),
     );
     const coverage = lcovBufferToIstanbul(lcov, []);
-    expect(Object.keys(coverage["src/da-notanumber.mts"]!.s)).toHaveLength(0);
-  });
-
-  it("skips DA: line with non-integer hit count", () => {
-    const lcov = buf(["TN:", "SF:src/da-badhits.mts", "DA:5,bad", "end_of_record"].join("\n"));
-    const coverage = lcovBufferToIstanbul(lcov, []);
-    expect(Object.keys(coverage["src/da-badhits.mts"]!.s)).toHaveLength(0);
+    expect(Object.keys(coverage["src/da-bad.mts"]!.s)).toHaveLength(0);
   });
 
   it("skips FN: line with no comma (malformed)", () => {
