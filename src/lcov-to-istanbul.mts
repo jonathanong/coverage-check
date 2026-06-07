@@ -82,9 +82,17 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
     const fileCov = coverage[filePath]!; // filePath was validated against coverage when SF: was processed
 
     if (line.startsWith("DA:")) {
-      const [lineNo, hits] = line.slice(3).split(",", 2);
-      const l = Number.parseInt(lineNo!, 10);
-      const h = Number.parseInt(hits ?? "", 10);
+      // Optimization: Instead of using `split(",")`, we use `indexOf` and `slice`
+      // to avoid allocating intermediate arrays, reducing garbage collection pauses.
+      const rest = line.slice(3);
+      const commaIdx = rest.indexOf(",");
+      if (commaIdx === -1) continue;
+
+      const lineNoStr = rest.slice(0, commaIdx);
+      const hitsStr = rest.slice(commaIdx + 1);
+
+      const l = Number.parseInt(lineNoStr, 10);
+      const h = Number.parseInt(hitsStr, 10);
       if (!Number.isInteger(l) || !Number.isInteger(h)) continue;
       const key = String(l);
       if (fileCov.statementMap[key] === undefined) {
@@ -120,11 +128,24 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
         fileCov.f[key] = (fileCov.f[key] as number) + h;
       }
     } else if (line.startsWith("BRDA:")) {
-      const parts = line.slice(5).split(",", 4);
-      const lineNo = Number.parseInt(parts[0]!, 10);
-      const blockId = parts[1] ?? "";
-      const branchId = parts[2] ?? "";
-      const taken = parts[3] === "-" ? 0 : Number.parseInt(parts[3] ?? "", 10);
+      // Optimization: Instead of using `split(",")`, we use `indexOf` and `slice`
+      // to avoid allocating intermediate arrays, reducing garbage collection pauses.
+      const rest = line.slice(5);
+      let comma1 = rest.indexOf(",");
+      if (comma1 === -1) continue;
+      let comma2 = rest.indexOf(",", comma1 + 1);
+      if (comma2 === -1) continue;
+      let comma3 = rest.indexOf(",", comma2 + 1);
+      if (comma3 === -1) continue;
+
+      const lineNoStr = rest.slice(0, comma1);
+      const blockId = rest.slice(comma1 + 1, comma2);
+      const branchId = rest.slice(comma2 + 1, comma3);
+      const takenStr = rest.slice(comma3 + 1);
+
+      const lineNo = Number.parseInt(lineNoStr, 10);
+      const taken = takenStr === "-" ? 0 : Number.parseInt(takenStr, 10);
+
       if (!Number.isInteger(lineNo) || !blockId || !branchId || !Number.isInteger(taken)) continue;
       const blockKey = `${lineNo}-${blockId}`;
       let fileBlocks = fileBranches.get(filePath);
@@ -148,7 +169,10 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
   for (const [fp, blocks] of fileBranches) {
     const fileCov = coverage[fp]!; // fp was validated against coverage when added to fileBranches
     for (const [blockKey, branches] of blocks) {
-      const lineNo = Number.parseInt(blockKey.split("-")[0]!, 10); // blockKey is always "N-blockId"
+      // blockKey is always "N-blockId". Optimization: avoid split("-")
+      const dashIdx = blockKey.indexOf("-");
+      const lineNoStr = dashIdx === -1 ? blockKey : blockKey.slice(0, dashIdx);
+      const lineNo = Number.parseInt(lineNoStr, 10);
       const branchLoc = loc(lineNo);
       const sorted = [...branches.entries()].sort(([a], [b]) =>
         a.localeCompare(b, undefined, { numeric: true }),
