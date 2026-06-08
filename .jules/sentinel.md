@@ -1,0 +1,4 @@
+## 2025-02-15 - Command Argument Injection via Git References
+**Vulnerability:** Command argument injection vulnerability where unvalidated input strings (`baseRef`, `headRef`) were passed directly to `git merge-base` and `git diff` via `node:child_process` `spawn`.
+**Learning:** Even when using `spawn` with an array of arguments (which prevents shell string interpolation injection), argument injection is still possible if an attacker provides a string that starts with a hyphen (e.g., `-` or `--`). The underlying command line tool parses these strings as options rather than positional arguments, potentially leading to unintended behavior or arbitrary command execution depending on the tool's options.
+**Prevention:** Always validate that strings passed as positional arguments to CLI tools do not start with a hyphen (`-`), or ensure they are properly prefixed with `--` to signify the end of options if the tool supports it (e.g., `git merge-base -- <ref>`).

@@ -111,6 +111,12 @@ export function parseDiff(text: string): DiffLines {
 
 /** Runs git merge-base + git diff and returns the raw diff text. Internal shared helper. */
 export async function runGitDiff(baseRef: string, headRef: string): Promise<string> {
+  // Security check: validate that baseRef and headRef don't start with "-"
+  // to prevent argument/command injection into the git process
+  if (baseRef.startsWith("-") || headRef.startsWith("-")) {
+    throw new Error("Invalid git reference: references cannot start with a hyphen (-)");
+  }
+
   const { spawn } = await import("node:child_process");
   const spawnProcess = (cmd: string, args: string[]) =>
     new Promise<string>((resolve, reject) => {
