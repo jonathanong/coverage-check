@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeGitCString, parseDiff } from "./diff-parser.mts";
+import { decodeGitCString, parseDiff, runGitDiff } from "./diff-parser.mts";
 import { parseDiffWithContent } from "./diff-parser-content.mts";
 
 const SIMPLE_DIFF = `
@@ -433,5 +433,19 @@ diff --git a/backend/x.mts b/backend/x.mts
 `;
     const result = parseDiffWithContent(diff);
     expect(result.get("backend/x.mts")?.get(1)).toBe("new");
+  });
+});
+
+describe("runGitDiff", () => {
+  it("throws error if baseRef starts with a hyphen", async () => {
+    await expect(runGitDiff("-main", "HEAD")).rejects.toThrow(
+      "Invalid git reference: references cannot start with a hyphen (-)",
+    );
+  });
+
+  it("throws error if headRef starts with a hyphen", async () => {
+    await expect(runGitDiff("main", "-HEAD")).rejects.toThrow(
+      "Invalid git reference: references cannot start with a hyphen (-)",
+    );
   });
 });
