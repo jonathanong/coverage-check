@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeGitCString, parseDiff } from "./diff-parser.mts";
+import { decodeGitCString, parseDiff, runGitDiff } from "./diff-parser.mts";
 import { parseDiffWithContent } from "./diff-parser-content.mts";
 
 const SIMPLE_DIFF = `
@@ -433,5 +433,16 @@ diff --git a/backend/x.mts b/backend/x.mts
 `;
     const result = parseDiffWithContent(diff);
     expect(result.get("backend/x.mts")?.get(1)).toBe("new");
+  });
+});
+
+describe("runGitDiff", () => {
+  it("rejects arguments starting with a hyphen to prevent argument injection", async () => {
+    await expect(runGitDiff("--config", "HEAD")).rejects.toThrow(
+      "Git reference cannot start with a hyphen (prevents argument injection)",
+    );
+    await expect(runGitDiff("HEAD", "--config")).rejects.toThrow(
+      "Git reference cannot start with a hyphen (prevents argument injection)",
+    );
   });
 });
