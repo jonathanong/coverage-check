@@ -30,11 +30,17 @@ async function findExistingComment(repo: string, pr: number, gh: GhRunner): Prom
       `first(.[] | select(.body | startswith("${COMMENT_MARKER}"))) | .id`,
     ]);
     // --paginate applies the jq filter per page; take the first valid ID across all lines
-    const id = raw
-      .split("\n")
-      .map((line) => parseInt(line.trim(), 10))
-      .find((n) => Number.isFinite(n) && n > 0);
-    return id ?? null;
+    // Optimization: avoid split and map for potentially large gh output
+    let start = 0;
+    while (start < raw.length) {
+      let end = raw.indexOf("\n", start);
+      if (end === -1) end = raw.length;
+      const line = raw.slice(start, end).trim();
+      const n = parseInt(line, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+      start = end + 1;
+    }
+    return null;
   } catch (err) {
     process.stderr.write(`coverage-check: warning: failed to look up existing comment: ${err}\n`);
     return null;

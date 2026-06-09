@@ -49,12 +49,11 @@ function s3ConsoleUrl(spec: string): string {
   const slash = spec.indexOf("/");
   const bucket = (slash === -1 ? spec : spec.slice(0, slash)).replace(/^\/+|\/+$/g, "");
   if (slash === -1) return `https://s3.console.aws.amazon.com/s3/buckets/${bucket}`;
-  const prefix = spec
-    .slice(slash + 1)
-    .replace(/^\/+|\/+$/g, "")
-    .split("/")
-    .map(encodeURIComponent)
-    .join("/");
+  // Optimization: Instead of using split and map which allocates multiple arrays,
+  // we can use replace with a regex to encode each segment, but since encodeURIComponent
+  // also encodes '/', we just encode the whole string and replace %2F back to /.
+  const prefixRaw = spec.slice(slash + 1).replace(/^\/+|\/+$/g, "");
+  const prefix = encodeURIComponent(prefixRaw).replace(/%2F/g, "/");
   return `https://s3.console.aws.amazon.com/s3/buckets/${bucket}?prefix=${prefix}/`;
 }
 
