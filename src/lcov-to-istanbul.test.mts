@@ -181,6 +181,24 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/da-nocomma.mts"]!.s)).toHaveLength(0);
   });
 
+  it("skips DA: line with missing line number and no comma", () => {
+    const lcov = buf(["TN:", "SF:src/da-nocomma.mts", "DA:abc", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/da-nocomma.mts"]!.s)).toHaveLength(0);
+  });
+
+  it("skips BRDA line with missing branch comma", () => {
+    const lcov = buf(["TN:", "SF:src/brda-nocomma.mts", "BRDA:1,0", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/brda-nocomma.mts"]!.b)).toHaveLength(0);
+  });
+
+  it("skips BRDA line with missing taken comma", () => {
+    const lcov = buf(["TN:", "SF:src/brda-nocomma.mts", "BRDA:1,0,0", "end_of_record"].join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/brda-nocomma.mts"]!.b)).toHaveLength(0);
+  });
+
   it("skips FN: line with no comma (malformed)", () => {
     const lcov = buf(["TN:", "SF:src/m.mts", "FN:nocolonhere", "end_of_record"].join("\n"));
     const coverage = lcovBufferToIstanbul(lcov, []);
