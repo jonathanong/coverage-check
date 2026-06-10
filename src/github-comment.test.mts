@@ -61,3 +61,10 @@ describe("upsertComment", () => {
     expect(calls.some((c) => c.includes("issues/42/comments") && !c.includes("PATCH"))).toBe(true);
   });
 });
+
+it("throws when repo starts with a hyphen to prevent argument injection", async () => {
+  const gh = makeGh({});
+  await expect(upsertComment(FAIL_BODY, "-owner/repo", 42, false, gh)).rejects.toThrow(
+    "Repository name cannot start with a hyphen (prevents argument injection)",
+  );
+});
