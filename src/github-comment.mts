@@ -55,6 +55,10 @@ export async function upsertComment(
   passed: boolean,
   gh: GhRunner = defaultGhRunner,
 ): Promise<void> {
+  if (repo.startsWith("-")) {
+    throw new Error("Repository name cannot start with a hyphen (prevents argument injection)");
+  }
+
   const existingId = await findExistingComment(repo, pr, gh);
 
   if (passed && existingId === null) return;
