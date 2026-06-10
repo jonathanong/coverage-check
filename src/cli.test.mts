@@ -55,4 +55,11 @@ describe("cli subcommand dispatch", () => {
       await main(["summary", "--artifacts", join(tmpDir, "nonexistent"), "--no-summary-file"]),
     ).toBe(0);
   });
+
+  it("merge subcommand returns 1 with no lcov files", async () => {
+    const outputPath = join(tmpDir, "merged", "lcov.info");
+    expect(
+      await main(["merge", "--artifacts", join(tmpDir, "nonexistent"), "--output", outputPath]),
+    ).toBe(1);
+  });
 });

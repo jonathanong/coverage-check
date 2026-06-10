@@ -140,6 +140,18 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("accepts --drop-only-changed-areas flag (parse succeeds, fails on missing rules)", async () => {
+    expect(
+      await main([
+        "--rules",
+        join(tmpDir, "nonexistent.yml"),
+        "--drop-only-changed-areas",
+        "--artifacts",
+        artifactsDir,
+      ]),
+    ).toBe(2);
+  });
+
   it("accepts --branch flag with a real branch name", async () => {
     expect(
       await main([
@@ -187,6 +199,37 @@ describe("main integration", () => {
 
   it("returns 0 when no coverage data found — skips git entirely", async () => {
     expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir])).toBe(0);
+  });
+
+  it("returns 2 when a required artifact is missing", async () => {
+    expect(
+      await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--require-artifact",
+        "coverage-missing/lcov.info",
+      ]),
+    ).toBe(2);
+  });
+
+  it("passes --require-artifact when the file exists", async () => {
+    const suiteDir = join(artifactsDir, "coverage-backend");
+    mkdirSync(suiteDir);
+    // Use a non-lcov.info filename so collectLcovFiles ignores it; the artifacts
+    // dir stays empty → reports.length === 0 → returns 0 without running git diff.
+    writeFileSync(join(suiteDir, "exists.marker"), "");
+    expect(
+      await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--require-artifact",
+        "coverage-backend/exists.marker",
+      ]),
+    ).toBe(0); // no lcov.info files found → skips git entirely
   });
 
   it("returns 0 when artifacts directory does not exist (ENOENT silenced)", async () => {
@@ -1247,6 +1290,144 @@ describe("with a real git repo and a known diff", () => {
     expect(result.drops).toHaveLength(1);
     expect(result.drops[0].skipped).toBe(true);
     expect(result.drops[0].passed).toBe(true);
+  });
+
+  it("--advisory: returns 0 even when patch coverage is below threshold", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+    // Without --advisory this would be exit 1 (uncovered line 2)
+    expect(
+      await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--base",
+        baseSha,
+        "--head",
+        headSha,
+        "--advisory",
+      ]),
+    ).toBe(0);
+  });
+
+  it("--advisory still writes JSON output on failure", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+    const jsonPath = join(tmpDir, "advisory-result.json");
+    await main([
+      "--rules",
+      rulesPath,
+      "--artifacts",
+      artifactsDir,
+      "--base",
+      baseSha,
+      "--head",
+      headSha,
+      "--advisory",
+      "--json",
+      jsonPath,
+    ]);
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result.passed).toBe(false); // content reflects real result
+  });
+
+  it("--drop-only-changed-areas skips drop rules when their area has no diff changes", async () => {
+    const dropRulesPath = join(tmpDir, "rules-drop-changed.yml");
+    writeFileSync(
+      dropRulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    const storeDir2 = join(tmpDir, "store-changed");
+    mkdirSync(storeDir2);
+    const store2 = new FileSystemSuiteStore(storeDir2);
+    // Baseline: 100% coverage for backend/**
+    await store2.put("main", Buffer.from("SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n"), {
+      sha: "sha1",
+      branch: "main",
+    });
+    // Fresh artifacts: regression (50%) — would normally fail
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+    const jsonPath = join(tmpDir, "result-drop-changed.json");
+
+    // Without flag, regression is detected and fails.
+    // Use suite: "main" so the store suite is excluded from current run; fresh artifact is 50%.
+    const exitWithout = await runCheck({
+      rules: dropRulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: baseSha, // empty diff — no backend files changed
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: store2,
+      suite: "main", // exclude "main" from current so fresh artifact = 50% < baseline 100%
+    });
+    expect(exitWithout).toBe(1); // drop regression detected
+
+    // With flag, drop is skipped because no backend files are in the (empty) diff
+    const exitWith = await runCheck({
+      rules: dropRulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: baseSha, // empty diff
+      pr: null,
+      repo: "",
+      json: jsonPath,
+      stripPrefixes: [],
+      store: store2,
+      suite: "main",
+      dropOnlyChangedAreas: true,
+    });
+    expect(exitWith).toBe(0);
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result.drops).toHaveLength(1);
+    expect(result.drops[0].skipped).toBe(true);
+  });
+
+  it("--drop-only-changed-areas still applies drop gate when area has diff changes", async () => {
+    const dropRulesPath = join(tmpDir, "rules-drop-changed2.yml");
+    writeFileSync(
+      dropRulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    const storeDir3 = join(tmpDir, "store-changed2");
+    mkdirSync(storeDir3);
+    const store3 = new FileSystemSuiteStore(storeDir3);
+    // Baseline: 100%
+    await store3.put("main", Buffer.from("SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n"), {
+      sha: "sha1",
+      branch: "main",
+    });
+    // Regression: 50%
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+    // baseSha → headSha touches backend/foo.mts, so backend/** IS in changedRules.
+    // Use suite: "main" so the store baseline is excluded from current run; fresh artifact is 50%.
+    const exitCode = await runCheck({
+      rules: dropRulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: store3,
+      suite: "main", // exclude "main" from current so fresh artifact = 50% < baseline 100%
+      dropOnlyChangedAreas: true,
+    });
+    expect(exitCode).toBe(1); // drop still fails because backend/** was changed
   });
 
   it("logs a warning and skips the drop check when the store throws during baseline loading", async () => {

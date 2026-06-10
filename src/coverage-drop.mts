@@ -22,11 +22,12 @@ export function computeCoverageDrop(
   current: LcovData,
   baseline: LcovData | null,
   rules: CoverageRule[],
+  changedRules?: Set<CoverageRule>,
 ): DropResult[] {
   const dropRules = rules.filter((r) => r.no_coverage_drop);
   return dropRules.map((rule) => {
     const maxDrop = rule.max_coverage_drop ?? 0;
-    if (baseline === null) {
+    if (baseline === null || (changedRules !== undefined && !changedRules.has(rule))) {
       return {
         rule: rule.paths,
         currentPct: null,

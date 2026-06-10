@@ -3,7 +3,7 @@ import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov } from "../lcov-merge.mts";
 import { getChangedLines } from "../diff-parser.mts";
 import { getChangedLineContent } from "../diff-parser-content.mts";
-import { loadRules } from "../rules.mts";
+import { loadRules, buildChangedRules } from "../rules.mts";
 import { computePatchCoverage } from "../patch-coverage.mts";
 import { computeCoverageDrop } from "../coverage-drop.mts";
 import { collapseRanges, renderFailureComment } from "../report.mts";
@@ -11,7 +11,7 @@ import { upsertComment } from "../github-comment.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { writeSummary } from "../step-summary.mts";
 import { parseCheckArgs } from "./check-args.mts";
-import { warnNonContributing, printDropOutput } from "./check-output.mts";
+import { warnNonContributing, printDropOutput, checkRequiredArtifacts } from "./check-output.mts";
 import type { CheckArgs } from "./check-args.mts";
 import type { SuiteSource } from "../step-summary.mts";
 import type { DiffLineContent, LcovData } from "../types.mts";
@@ -39,6 +39,8 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     stderr(`coverage-check: failed to load rules: ${err}`);
     return 2;
   }
+
+  if (!checkRequiredArtifacts(args.artifacts, args.requireArtifacts ?? [])) return 2;
 
   const branch = args.branch ?? "main";
   const stripPrefixes = buildStripPrefixes(args.stripPrefixes);
@@ -122,7 +124,9 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   }
 
   const { buckets, informational } = computePatchCoverage(diff, lcov, rules);
-  const drops = computeCoverageDrop(lcov, baseline, rules);
+  const changedRules =
+    (args.dropOnlyChangedAreas ?? false) ? buildChangedRules(diff, rules) : undefined;
+  const drops = computeCoverageDrop(lcov, baseline, rules, changedRules);
   const passed = buckets.every((b) => b.passed) && drops.every((d) => d.passed || d.skipped);
   const result = { buckets, drops, informational, passed };
 
@@ -191,5 +195,5 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     }
   }
 
-  return passed ? 0 : 1;
+  return (args.advisory ?? false) || passed ? 0 : 1;
 }

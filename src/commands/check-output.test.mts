@@ -1,5 +1,8 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { warnNonContributing, printDropOutput } from "./check-output.mts";
+import { warnNonContributing, printDropOutput, checkRequiredArtifacts } from "./check-output.mts";
 import type { DropResult, LcovData, DiffLines } from "../types.mts";
 
 function makeLcov(files: Record<string, Record<number, number>>): LcovData {
@@ -17,6 +20,53 @@ function makeDiff(files: Record<string, number[]>): DiffLines {
   }
   return diff;
 }
+
+describe("checkRequiredArtifacts", () => {
+  let tmpDir: string;
+
+  it("returns true when requireArtifacts is empty", () => {
+    expect(checkRequiredArtifacts("/any/dir", [])).toBe(true);
+  });
+
+  it("returns true when all required artifacts exist", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "coverage-check-req-"));
+    const suiteDir = join(tmpDir, "coverage-backend");
+    mkdirSync(suiteDir);
+    writeFileSync(join(suiteDir, "lcov.info"), "");
+    expect(checkRequiredArtifacts(tmpDir, ["coverage-backend/lcov.info"])).toBe(true);
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns false and writes ::error:: when a required artifact is missing", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "coverage-check-req-"));
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const result = checkRequiredArtifacts(tmpDir, ["missing-suite/lcov.info"]);
+      expect(result).toBe(false);
+      const output = spy.mock.calls.map((c) => String(c[0])).join("");
+      expect(output).toContain("::error::");
+      expect(output).toContain("missing-suite/lcov.info");
+    } finally {
+      spy.mockRestore();
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns false and reports all missing artifacts (not just the first)", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "coverage-check-req-"));
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const result = checkRequiredArtifacts(tmpDir, ["a/lcov.info", "b/lcov.info"]);
+      expect(result).toBe(false);
+      const output = spy.mock.calls.map((c) => String(c[0])).join("");
+      expect(output).toContain("a/lcov.info");
+      expect(output).toContain("b/lcov.info");
+    } finally {
+      spy.mockRestore();
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("warnNonContributing", () => {
   it("does nothing when diff is empty", () => {

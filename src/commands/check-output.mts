@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { DropResult, DiffLines, LcovData } from "../types.mts";
 
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
@@ -22,6 +24,21 @@ function lcovContributesToDiff(sourceLcov: LcovData, diff: DiffLines): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Verifies that each required artifact path exists under artifactsDir.
+ * Prints `::error::` to stderr for each missing file and returns false if any are absent.
+ */
+export function checkRequiredArtifacts(artifactsDir: string, requireArtifacts: string[]): boolean {
+  let ok = true;
+  for (const rel of requireArtifacts) {
+    if (!existsSync(join(artifactsDir, rel))) {
+      stderr(`::error:: missing expected coverage artifact: ${rel}`);
+      ok = false;
+    }
+  }
+  return ok;
 }
 
 export function warnNonContributing(

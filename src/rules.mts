@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { matchesGlob } from "node:path";
 import yaml from "js-yaml";
-import type { CoverageRule, CoverageRules } from "./types.mts";
+import type { CoverageRule, CoverageRules, DiffLines } from "./types.mts";
 
 function validateDropRuleFields(rule: Partial<CoverageRule>, i: number, rulesPath: string): void {
   const noDrop = rule.no_coverage_drop;
@@ -48,4 +48,14 @@ export function matchRule(file: string, rules: CoverageRule[]): CoverageRule | n
     if (matchesGlob(file, rule.paths)) return rule;
   }
   return null;
+}
+
+/**
+ * Returns the set of rules that have at least one changed file in the diff.
+ * Used by `--drop-only-changed-areas` to scope the coverage-drop gate.
+ */
+export function buildChangedRules(diff: DiffLines, rules: CoverageRule[]): Set<CoverageRule> {
+  return new Set(
+    [...diff.keys()].map((f) => matchRule(f, rules)).filter((r): r is CoverageRule => r !== null),
+  );
 }

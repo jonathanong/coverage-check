@@ -7,7 +7,7 @@ import type {
 
 export const COMMENT_MARKER = "<!-- coverage-check -->";
 
-export function collapseRanges(lines: number[]): string {
+export function collapseRanges(lines: number[], prefix = "L"): string {
   if (lines.length === 0) return "";
   const sorted = [...lines].sort((a, b) => a - b);
   const ranges: string[] = [];
@@ -19,12 +19,12 @@ export function collapseRanges(lines: number[]): string {
     if (n === end + 1) {
       end = n;
     } else {
-      ranges.push(start === end ? `L${start}` : `L${start}-${end}`);
+      ranges.push(start === end ? `${prefix}${start}` : `${prefix}${start}-${end}`);
       start = n;
       end = n;
     }
   }
-  ranges.push(start === end ? `L${start}` : `L${start}-${end}`);
+  ranges.push(start === end ? `${prefix}${start}` : `${prefix}${start}-${end}`);
   return ranges.join(", ");
 }
 
