@@ -126,10 +126,18 @@ describe("lcovBufferToIstanbul", () => {
   it("skips malformed BRDA line with missing parts", () => {
     // Missing blockId and branchId — should hit the continue guard
     const lcov = buf(
-      ["TN:", "SF:src/j.mts", "BRDA:10", "BRDA:10,0,0,1", "end_of_record"].join("\n"),
+      [
+        "TN:",
+        "SF:src/j.mts",
+        "BRDA:10",
+        "BRDA:10,0",
+        "BRDA:10,0,0",
+        "BRDA:10,0,0,1",
+        "end_of_record",
+      ].join("\n"),
     );
     const coverage = lcovBufferToIstanbul(lcov, []);
-    // Only the valid BRDA line is processed; malformed one is skipped
+    // Only the valid BRDA line is processed; malformed ones are skipped
     expect(coverage["src/j.mts"]!.b["10-0"]).toEqual([1]);
   });
 
@@ -138,6 +146,20 @@ describe("lcovBufferToIstanbul", () => {
     const coverage = lcovBufferToIstanbul(lcov, []);
     // No branches recorded since lineNo is not parseable
     expect(Object.keys(coverage["src/k.mts"]!.b)).toHaveLength(0);
+  });
+
+  it("skips BRDA lines with missing or non-integer components", () => {
+    const lines = [
+      "TN:",
+      "SF:src/k-bad.mts",
+      "BRDA:10,,0,1", // empty blockId
+      "BRDA:10,0,,1", // empty branchId
+      "BRDA:10,0,0,notanumber", // non-integer hit count
+      "end_of_record",
+    ];
+    const lcov = buf(lines.join("\n"));
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/k-bad.mts"]!.b)).toHaveLength(0);
   });
 
   it("skips unrecognized line types when inside an SF block", () => {
@@ -179,6 +201,14 @@ describe("lcovBufferToIstanbul", () => {
     const lcov = buf(["TN:", "SF:src/da-nocomma.mts", "DA:5", "end_of_record"].join("\n"));
     const coverage = lcovBufferToIstanbul(lcov, []);
     expect(Object.keys(coverage["src/da-nocomma.mts"]!.s)).toHaveLength(0);
+  });
+
+  it("skips DA: line with non-integer lineNo or hit count", () => {
+    const lcov = buf(
+      ["TN:", "SF:src/da-bad.mts", "DA:notanumber,1", "DA:5,bad", "end_of_record"].join("\n"),
+    );
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(Object.keys(coverage["src/da-bad.mts"]!.s)).toHaveLength(0);
   });
 
   it("skips FN: line with no comma (malformed)", () => {
