@@ -14,7 +14,7 @@ export function parseMergeArgs(argv: string[]): MergeArgs {
   };
 
   for (let i = 0; i < argv.length; i++) {
-    const flag = argv[i]!;
+    const flag = argv[i];
     const next = argv[i + 1];
     const val = (): string => {
       if (next === undefined || next.startsWith("--")) {

@@ -153,7 +153,7 @@ describe("computeCoverageDrop", () => {
     it("undefined changedRules preserves existing behavior", () => {
       const baseline = makeLcov({ "backend/index.ts": { 1: 1, 2: 1, 3: 1, 4: 1 } });
       const current = makeLcov({ "backend/index.ts": { 1: 1, 2: 0, 3: 0, 4: 0 } });
-      const drops = computeCoverageDrop(current, baseline, rules, undefined);
+      const drops = computeCoverageDrop(current, baseline, rules);
       const d = drops.find((d) => d.rule === "backend/**")!;
       expect(d.passed).toBe(false);
       expect(d.skipped).toBe(false);
