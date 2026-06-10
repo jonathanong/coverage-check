@@ -141,7 +141,8 @@ export function lcovBufferToIstanbul(lcov: Buffer, stripPrefixes: string[]): Ist
       const lineNoStr = rest.slice(0, comma1);
       const blockId = rest.slice(comma1 + 1, comma2);
       const branchId = rest.slice(comma2 + 1, comma3);
-      const takenStr = rest.slice(comma3 + 1);
+      const comma4 = rest.indexOf(",", comma3 + 1);
+      const takenStr = comma4 === -1 ? rest.slice(comma3 + 1) : rest.slice(comma3 + 1, comma4);
 
       const lineNo = Number.parseInt(lineNoStr, 10);
       const taken = takenStr === "-" ? 0 : Number.parseInt(takenStr, 10);
