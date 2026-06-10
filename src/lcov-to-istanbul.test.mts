@@ -162,6 +162,21 @@ describe("lcovBufferToIstanbul", () => {
     expect(Object.keys(coverage["src/k-bad.mts"]!.b)).toHaveLength(0);
   });
 
+  it("discards extra fields beyond the 4th in BRDA lines (preserves split(',',4) semantics)", () => {
+    // A BRDA line with a 5th extra field — takenStr should be "3", not "3,extra"
+    const lcov = buf(
+      [
+        "TN:",
+        "SF:src/k-extra.mts",
+        "BRDA:5,0,0,3,extra",
+        "BRDA:5,0,1,-,meta",
+        "end_of_record",
+      ].join("\n"),
+    );
+    const coverage = lcovBufferToIstanbul(lcov, []);
+    expect(coverage["src/k-extra.mts"]!.b["5-0"]).toEqual([3, 0]);
+  });
+
   it("skips unrecognized line types when inside an SF block", () => {
     const lcov = buf(["TN:", "SF:src/unrecognized.mts", "ZZZ:ignored", "end_of_record"].join("\n"));
     const coverage = lcovBufferToIstanbul(lcov, []);
