@@ -217,7 +217,9 @@ describe("main integration", () => {
   it("passes --require-artifact when the file exists", async () => {
     const suiteDir = join(artifactsDir, "coverage-backend");
     mkdirSync(suiteDir);
-    writeFileSync(join(suiteDir, "lcov.info"), "SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
+    // Use a non-lcov.info filename so collectLcovFiles ignores it; the artifacts
+    // dir stays empty → reports.length === 0 → returns 0 without running git diff.
+    writeFileSync(join(suiteDir, "exists.marker"), "");
     expect(
       await main([
         "--rules",
@@ -225,9 +227,9 @@ describe("main integration", () => {
         "--artifacts",
         artifactsDir,
         "--require-artifact",
-        "coverage-backend/lcov.info",
+        "coverage-backend/exists.marker",
       ]),
-    ).toBe(0); // no diff data → skips git entirely
+    ).toBe(0); // no lcov.info files found → skips git entirely
   });
 
   it("returns 0 when artifacts directory does not exist (ENOENT silenced)", async () => {
