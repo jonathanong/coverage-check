@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { parseLcovFull, mergeLcovFull, toLcovFull } from "../lcov-records.mts";
+import { checkRequiredArtifacts } from "./check-output.mts";
 import { parseMergeArgs } from "./merge-args.mts";
 import type { MergeArgs } from "./merge-args.mts";
 export type { MergeArgs } from "./merge-args.mts";
@@ -26,12 +27,7 @@ export async function main(argv: string[]): Promise<number> {
  * Hit counts are summed across reports (lines, function hits, branch hits).
  */
 export function runMerge(args: MergeArgs): number {
-  for (const rel of args.requireArtifacts) {
-    if (!existsSync(join(args.artifacts, rel))) {
-      stderr(`::error:: missing expected coverage artifact: ${rel}`);
-      return 2;
-    }
-  }
+  if (!checkRequiredArtifacts(args.artifacts, args.requireArtifacts)) return 2;
 
   const lcovFiles = collectLcovFiles(args.artifacts);
   if (lcovFiles.length === 0) {
