@@ -21,6 +21,12 @@ export type CheckArgs = {
   summaryFile?: string | null;
   /** Annotate each uncovered line with its trimmed source text in stdout. Default: false. */
   annotateSource?: boolean;
+  /** Exit 0 even on coverage shortfall — compute and print, but never block. Default: false. */
+  advisory?: boolean;
+  /** Apply no_coverage_drop only to rules whose area has changed files in the diff. Default: false. */
+  dropOnlyChangedAreas?: boolean;
+  /** Relative paths under --artifacts that must exist before the check runs (repeatable). */
+  requireArtifacts?: string[];
 };
 
 export function parseCheckArgs(argv: string[]): CheckArgs {
@@ -40,6 +46,9 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     branch: "main",
     summaryFile: process.env["GITHUB_STEP_SUMMARY"] ?? null,
     annotateSource: false,
+    advisory: false,
+    dropOnlyChangedAreas: false,
+    requireArtifacts: [],
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -102,6 +111,15 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
       }
       case "--annotate-source":
         args.annotateSource = true;
+        break;
+      case "--advisory":
+        args.advisory = true;
+        break;
+      case "--drop-only-changed-areas":
+        args.dropOnlyChangedAreas = true;
+        break;
+      case "--require-artifact":
+        args.requireArtifacts!.push(val());
         break;
       default:
         throw new Error(`unknown flag: ${flag}`);

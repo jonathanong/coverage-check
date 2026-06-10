@@ -110,4 +110,53 @@ describe("computeCoverageDrop", () => {
     const lcov = makeLcov({ "backend/index.ts": { 1: 1 } });
     expect(computeCoverageDrop(lcov, lcov, rulesNoDrop)).toEqual([]);
   });
+
+  describe("changedRules parameter", () => {
+    it("skips rules not in changedRules even when baseline is available", () => {
+      const baseline = makeLcov({ "backend/index.ts": { 1: 1, 2: 1 } }); // 100%
+      const current = makeLcov({ "backend/index.ts": { 1: 1, 2: 0 } }); // 50% — regression!
+      const backendRule = rules.find((r) => r.paths === "backend/**")!;
+      // changedRules contains only web/** — backend/** not in set → skip
+      const webRule = rules.find((r) => r.paths === "web/**")!;
+      const changedRules = new Set([webRule]);
+      const drops = computeCoverageDrop(current, baseline, rules, changedRules);
+      const d = drops.find((d) => d.rule === "backend/**")!;
+      expect(d.skipped).toBe(true);
+      expect(d.passed).toBe(true);
+      // Verify the skipped rule would have failed without changedRules
+      const dropsWithout = computeCoverageDrop(current, baseline, rules);
+      const dWithout = dropsWithout.find((d) => d.rule === "backend/**")!;
+      expect(dWithout.passed).toBe(false);
+      // Suppress unused variable warning
+      expect(backendRule).toBeDefined();
+    });
+
+    it("evaluates rules in changedRules normally", () => {
+      const baseline = makeLcov({ "backend/index.ts": { 1: 1, 2: 1 } }); // 100%
+      const current = makeLcov({ "backend/index.ts": { 1: 1, 2: 0 } }); // 50%
+      const backendRule = rules.find((r) => r.paths === "backend/**")!;
+      const changedRules = new Set([backendRule]);
+      const drops = computeCoverageDrop(current, baseline, rules, changedRules);
+      const d = drops.find((d) => d.rule === "backend/**")!;
+      expect(d.skipped).toBe(false);
+      expect(d.passed).toBe(false); // regression is real
+    });
+
+    it("skips all drop rules when changedRules is empty", () => {
+      const baseline = makeLcov({ "backend/index.ts": { 1: 1, 2: 1 } });
+      const current = makeLcov({ "backend/index.ts": { 1: 1, 2: 0 } });
+      const changedRules = new Set<CoverageRule>();
+      const drops = computeCoverageDrop(current, baseline, rules, changedRules);
+      expect(drops.every((d) => d.skipped)).toBe(true);
+    });
+
+    it("undefined changedRules preserves existing behavior", () => {
+      const baseline = makeLcov({ "backend/index.ts": { 1: 1, 2: 1, 3: 1, 4: 1 } });
+      const current = makeLcov({ "backend/index.ts": { 1: 1, 2: 0, 3: 0, 4: 0 } });
+      const drops = computeCoverageDrop(current, baseline, rules, undefined);
+      const d = drops.find((d) => d.rule === "backend/**")!;
+      expect(d.passed).toBe(false);
+      expect(d.skipped).toBe(false);
+    });
+  });
 });

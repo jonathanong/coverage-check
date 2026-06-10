@@ -49,3 +49,16 @@ export function matchRule(file: string, rules: CoverageRule[]): CoverageRule | n
   }
   return null;
 }
+
+/**
+ * Returns the set of rules that have at least one changed file in the diff.
+ * Used by `--drop-only-changed-areas` to scope the coverage-drop gate.
+ */
+export function buildChangedRules(
+  diff: Map<string, unknown>,
+  rules: CoverageRule[],
+): Set<CoverageRule> {
+  return new Set(
+    [...diff.keys()].map((f) => matchRule(f, rules)).filter((r): r is CoverageRule => r !== null),
+  );
+}

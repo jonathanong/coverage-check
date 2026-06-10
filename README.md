@@ -120,6 +120,60 @@ Two common sources of confusion:
 The annotation affects only the stdout failure output. The GitHub PR sticky comment and Actions step
 summary are unchanged.
 
+### Merging LCOV files
+
+Use the `merge` subcommand to fold multiple `lcov.info` files into a single output that preserves function and branch records (`FN`, `FNDA`, `BRDA`) as well as summary counters (`LF/LH/FNF/FNH/BRF/BRH`):
+
+```sh
+coverage-check merge \
+  --artifacts ./coverage-artifacts \
+  --output ./coverage-merged/lcov.info
+```
+
+Hit counts are **summed** across inputs (consistent with the package's internal multi-suite merge). Parent directories of `--output` are created automatically.
+
+### Advisory (non-blocking) mode
+
+Pass `--advisory` to exit `0` even when coverage falls short. The check still runs in full — JSON is written, the PR comment is posted, and uncovered lines are printed — but the process never exits `1`. Useful for pre-push hooks where you want feedback without blocking the push:
+
+```sh
+coverage-check check \
+  --rules .coverage-rules.yml \
+  --artifacts ./coverage-artifacts \
+  --base origin/main \
+  --head HEAD \
+  --advisory
+```
+
+### PR-scoped regression gate
+
+By default, `no_coverage_drop` applies to every rule area regardless of what changed. Pass `--drop-only-changed-areas` to restrict the drop gate to rule areas that contain at least one changed file in the PR diff. Areas with no changed files are reported as `skipped` — they pass non-blockingly:
+
+```sh
+coverage-check check \
+  --rules .coverage-rules.yml \
+  --artifacts ./coverage-artifacts \
+  --base origin/main \
+  --head HEAD \
+  --drop-only-changed-areas
+```
+
+This avoids false positives when a CI run only exercises a subset of areas.
+
+### Required artifacts
+
+Pass `--require-artifact <relpath>` (repeatable) to fail early — exit `2` with a `::error::` annotation — if an expected `lcov.info` is absent from `--artifacts`. This distinguishes a missing coverage upload (CI job didn't run) from genuine uncovered lines:
+
+```sh
+coverage-check check \
+  --rules .coverage-rules.yml \
+  --artifacts ./coverage-artifacts \
+  --require-artifact coverage-backend/lcov.info \
+  --require-artifact coverage-frontend/lcov.info
+```
+
+`--require-artifact` is also accepted by `coverage-check merge`.
+
 ## Rules file
 
 ```yaml
@@ -166,22 +220,36 @@ First-match-wins means that if you have a more specific rule before a broader on
 
 ### `coverage-check check`
 
-| Flag                | Default                | Description                                                                                                |
-| ------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `--rules`           | `.coverage-rules.yml`  | Path to YAML rules file                                                                                    |
-| `--artifacts`       | `./coverage-artifacts` | Directory to scan for `lcov.info` files                                                                    |
-| `--base`            | `origin/main`          | Base git ref for `git diff`                                                                                |
-| `--head`            | `HEAD`                 | Head git ref for `git diff`                                                                                |
-| `--store-fs`        | —                      | Path to a filesystem suite store directory                                                                 |
-| `--store`           | —                      | Alias for `--store-fs`                                                                                     |
-| `--store-s3`        | —                      | S3 suite store spec: `<bucket>[/<prefix>]`                                                                 |
-| `--branch`          | `"main"`               | Branch pointer to follow when reading from the store                                                       |
-| `--suite`           | —                      | Name of the current suite (no `/` or `\\`); fresh artifacts override this suite in the store               |
-| `--strip-prefix`    | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                                              |
-| `--pr`              | —                      | Pull request number for sticky comment                                                                     |
-| `--repo`            | `$GITHUB_REPOSITORY`   | `owner/repo` for sticky comment                                                                            |
-| `--json`            | —                      | Write JSON result to this path                                                                             |
-| `--annotate-source` | —                      | Print the trimmed source text of each uncovered line in stdout (does not alter PR comment or step summary) |
+| Flag                        | Default                | Description                                                                                                |
+| --------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `--rules`                   | `.coverage-rules.yml`  | Path to YAML rules file                                                                                    |
+| `--artifacts`               | `./coverage-artifacts` | Directory to scan for `lcov.info` files                                                                    |
+| `--base`                    | `origin/main`          | Base git ref for `git diff`                                                                                |
+| `--head`                    | `HEAD`                 | Head git ref for `git diff`                                                                                |
+| `--store-fs`                | —                      | Path to a filesystem suite store directory                                                                 |
+| `--store`                   | —                      | Alias for `--store-fs`                                                                                     |
+| `--store-s3`                | —                      | S3 suite store spec: `<bucket>[/<prefix>]`                                                                 |
+| `--branch`                  | `"main"`               | Branch pointer to follow when reading from the store                                                       |
+| `--suite`                   | —                      | Name of the current suite (no `/` or `\\`); fresh artifacts override this suite in the store               |
+| `--strip-prefix`            | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                                              |
+| `--pr`                      | —                      | Pull request number for sticky comment                                                                     |
+| `--repo`                    | `$GITHUB_REPOSITORY`   | `owner/repo` for sticky comment                                                                            |
+| `--json`                    | —                      | Write JSON result to this path                                                                             |
+| `--annotate-source`         | —                      | Print the trimmed source text of each uncovered line in stdout (does not alter PR comment or step summary) |
+| `--advisory`                | —                      | Exit `0` even on shortfall; still prints, writes JSON, and posts PR comment                                |
+| `--drop-only-changed-areas` | —                      | Restrict `no_coverage_drop` to rule areas that have ≥1 changed file; others are reported as skipped        |
+| `--require-artifact`        | —                      | Fail (exit `2`) if this relative path is absent under `--artifacts` (repeatable)                           |
+
+### `coverage-check merge`
+
+| Flag                 | Default                | Description                                                   |
+| -------------------- | ---------------------- | ------------------------------------------------------------- |
+| `--artifacts`        | `./coverage-artifacts` | Directory to scan for `lcov.info` files                       |
+| `--output`           | required               | Path to write the merged `lcov.info`                          |
+| `--strip-prefix`     | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable) |
+| `--require-artifact` | —                      | Fail (exit `2`) if this relative path is absent (repeatable)  |
+
+Hit counts are summed across all inputs. Function (`FN`/`FNDA`) and branch (`BRDA`) records are preserved; summary counters (`LF/LH/FNF/FNH/BRF/BRH`) are recomputed from the merged data.
 
 ### `coverage-check store-put`
 
@@ -203,7 +271,17 @@ When `--sha` and `--branch` are both provided, `store-put` writes a SHA-addresse
 ## Programmatic API
 
 ```ts
-import { runCheck, runStorePut, FileSystemSuiteStore, S3SuiteStore } from "coverage-check";
+import {
+  runCheck,
+  runMerge,
+  runStorePut,
+  collapseRanges,
+  parseLcovFull,
+  mergeLcovFull,
+  toLcovFull,
+  FileSystemSuiteStore,
+  S3SuiteStore,
+} from "coverage-check";
 
 // FileSystem store
 const fsStore = new FileSystemSuiteStore("/path/to/store");
@@ -223,6 +301,16 @@ await runCheck({
   store: s3Store,
   suite: "backend",
   branch: "main",
+  advisory: false,
+  dropOnlyChangedAreas: false,
+  requireArtifacts: [],
+});
+
+await runMerge({
+  artifacts: "./coverage-artifacts",
+  output: "./coverage-merged/lcov.info",
+  stripPrefixes: [],
+  requireArtifacts: [],
 });
 
 await runStorePut({
@@ -233,6 +321,15 @@ await runStorePut({
   sha: "abc123",
   branch: "main",
 });
+
+// Collapse a sorted line list into a compact range string
+collapseRanges([1, 2, 3, 7, 8]); // → "L1-3, L7-8"
+collapseRanges([1, 2, 3, 7, 8], ""); // → "1-3, 7-8"
+
+// Full-fidelity LCOV (functions + branches + lines)
+const full = parseLcovFull(lcovText, ["/home/runner/work/repo/repo/"]);
+const merged = mergeLcovFull([full1, full2]); // hits are summed
+const output = toLcovFull(merged); // includes FN/FNDA/BRDA and LF/LH/FNF/FNH/BRF/BRH
 ```
 
 You can also implement your own `SuiteStore`:
