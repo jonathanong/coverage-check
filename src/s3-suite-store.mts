@@ -76,7 +76,6 @@ export class S3SuiteStore implements SuiteStore {
         throw err;
       }
     }
-    if (sha === undefined) throw new Error("coverage payload sha was not resolved");
     return this.getVersionedPayload(suite, sha, pointer, opts?.sha !== undefined);
   }
 

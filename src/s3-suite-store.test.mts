@@ -3,6 +3,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { S3SuiteStore } from "./s3-suite-store.mts";
+import { sendS3 } from "./s3-diagnostics.mts";
 import { encodeBranchName } from "./suite-store.mts";
 
 function makeClient(sendImpl: (cmd: unknown) => Promise<unknown>) {
@@ -545,6 +546,47 @@ describe("S3SuiteStore — constructor prefix normalization", () => {
       restoreEnv("COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS", oldConnection);
       restoreEnv("COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS", oldRequest);
       restoreEnv("COVERAGE_CHECK_S3_MAX_ATTEMPTS", oldAttempts);
+      stderr.mockRestore();
+    }
+  });
+
+  it("accepts positive integer S3 client env vars", () => {
+    const oldConnection = process.env.COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS;
+    const oldRequest = process.env.COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS;
+    const oldAttempts = process.env.COVERAGE_CHECK_S3_MAX_ATTEMPTS;
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      process.env.COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS = "1234";
+      process.env.COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS = "5678";
+      process.env.COVERAGE_CHECK_S3_MAX_ATTEMPTS = "3";
+      new S3SuiteStore({ bucket: BUCKET });
+
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      restoreEnv("COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS", oldConnection);
+      restoreEnv("COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS", oldRequest);
+      restoreEnv("COVERAGE_CHECK_S3_MAX_ATTEMPTS", oldAttempts);
+      stderr.mockRestore();
+    }
+  });
+});
+
+describe("S3 diagnostics", () => {
+  it("logs non-Error failures", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const client = makeClient(async () => {
+        throw "network down";
+      });
+
+      await expect(sendS3(client, BUCKET, "read", "coverage/backend/lcov.info", {})).rejects.toBe(
+        "network down",
+      );
+
+      const output = stderr.mock.calls.map((call) => String(call[0])).join("");
+      expect(output).toContain('operation="read"');
+      expect(output).toContain('error="network down"');
+    } finally {
       stderr.mockRestore();
     }
   });
