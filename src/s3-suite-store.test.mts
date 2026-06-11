@@ -115,6 +115,7 @@ describe("S3SuiteStore — get()", () => {
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
     const result = await store.get("backend", { branch: "main" });
     expect(result!.toString()).toBe(LCOV);
+    expect(client.send).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to legacy lcov.info when no branch pointer exists", async () => {

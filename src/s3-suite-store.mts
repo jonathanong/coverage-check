@@ -122,15 +122,17 @@ export class S3SuiteStore implements SuiteStore {
     pointer: StoredPointer | null,
     explicitSha: boolean,
   ): Promise<Buffer | null> {
-    const candidates =
-      pointer?.payloadKey !== undefined
-        ? [{ key: pointer.payloadKey, encoding: pointer.encoding }]
-        : explicitSha
-          ? [
-              { key: this.key(suite, "sha", sha, "lcov.info.gz"), encoding: "gzip" as const },
-              { key: this.key(suite, "sha", sha, "lcov.info"), encoding: undefined },
-            ]
-          : [{ key: this.key(suite, "sha", sha, "lcov.info"), encoding: undefined }];
+    let candidates: Array<{ key: string; encoding: "gzip" | undefined }>;
+    if (pointer?.payloadKey !== undefined) {
+      candidates = [{ key: pointer.payloadKey, encoding: pointer.encoding }];
+    } else if (explicitSha) {
+      candidates = [
+        { key: this.key(suite, "sha", sha, "lcov.info.gz"), encoding: "gzip" },
+        { key: this.key(suite, "sha", sha, "lcov.info"), encoding: undefined },
+      ];
+    } else {
+      candidates = [{ key: this.key(suite, "sha", sha, "lcov.info"), encoding: undefined }];
+    }
     for (const candidate of candidates) {
       try {
         const resp = (await this.sendS3(
