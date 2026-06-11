@@ -1,19 +1,12 @@
-import {
-  GetObjectCommand,
-  ListObjectsV2Command,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
-import {
-  assertSafePathComponent,
-  assertValidTimestamp,
-  encodeBranchName,
-  isNewerTimestamp,
-} from "./suite-store.mts";
+import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
+import { gunzipSync, gzipSync } from "node:zlib";
+import { assertSafePathComponent, assertValidTimestamp, encodeBranchName } from "./suite-store.mts";
+import { createS3Client, sendS3 } from "./s3-diagnostics.mts";
+import { getLegacy, readPointer, shouldWritePointer } from "./s3-suite-store-reads.mts";
 import { bodyToBuffer, isNotFound } from "./s3-utils.mts";
+import type { ClientLike, S3OperationDetails } from "./s3-diagnostics.mts";
+import type { StoredPointer } from "./s3-suite-store-reads.mts";
 import type { SuitePutMeta, SuiteStore } from "./suite-store.mts";
-
-type ClientLike = { send(cmd: object): Promise<unknown> };
 
 export type S3SuiteStoreOptions = {
   bucket: string;
@@ -24,17 +17,17 @@ export type S3SuiteStoreOptions = {
 };
 
 export class S3SuiteStore implements SuiteStore {
-  private readonly bucket: string;
+  readonly bucket: string;
   private readonly prefix: string;
   private readonly client: ClientLike;
 
   constructor({ bucket, prefix, region, client }: S3SuiteStoreOptions) {
     this.bucket = bucket;
     this.prefix = prefix ? prefix.replace(/\/+$/, "") : "";
-    this.client = client ?? new S3Client({ region });
+    this.client = client ?? createS3Client(region);
   }
 
-  private key(...parts: string[]): string {
+  key(...parts: string[]): string {
     return this.prefix ? [this.prefix, ...parts].join("/") : parts.join("/");
   }
 
@@ -43,7 +36,9 @@ export class S3SuiteStore implements SuiteStore {
     const suites: string[] = [];
     let continuationToken: string | undefined;
     do {
-      const resp = (await this.client.send(
+      const resp = (await this.sendS3(
+        "list suites",
+        this.key(),
         new ListObjectsV2Command({
           Bucket: this.bucket,
           Prefix: pfx,
@@ -69,125 +64,137 @@ export class S3SuiteStore implements SuiteStore {
     assertSafePathComponent(suite, "suite");
     if (opts?.sha !== undefined) assertSafePathComponent(opts.sha, "sha");
     let sha = opts?.sha;
+    let pointer: StoredPointer | null = null;
     if (!sha) {
       const branch = opts?.branch ?? "main";
       try {
-        const pointer = await this.readPointer(suite, branch);
+        pointer = await readPointer(this, suite, branch);
         assertSafePathComponent(pointer.sha, "sha");
         sha = pointer.sha;
       } catch (err) {
-        if (isNotFound(err)) return this.getLegacy(suite);
+        if (isNotFound(err)) return getLegacy(this, suite);
         throw err;
       }
     }
-    try {
-      const resp = (await this.client.send(
-        new GetObjectCommand({
-          Bucket: this.bucket,
-          Key: this.key(suite, "sha", sha, "lcov.info"),
-        }),
-      )) as { Body: unknown };
-      return bodyToBuffer(resp.Body);
-    } catch (err) {
-      if (isNotFound(err)) return null;
-      throw err;
-    }
+    return this.getVersionedPayload(suite, sha, pointer, opts?.sha !== undefined);
   }
 
   async put(suite: string, lcov: Buffer, meta?: SuitePutMeta): Promise<void> {
     assertSafePathComponent(suite, "suite");
     if (meta === undefined) {
-      await this.client.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: this.key(suite, "lcov.info"),
-          Body: lcov,
-          ContentType: "text/plain",
-        }),
-      );
+      await this.putLegacyPayload(suite, lcov);
       return;
     }
     const { sha, branch } = meta;
     assertSafePathComponent(sha, "sha");
     const ts = meta.timestamp ?? new Date().toISOString();
     assertValidTimestamp(ts);
-    await this.client.send(
+    const payload = gzipSync(lcov);
+    const payloadKey = this.key(suite, "sha", sha, "lcov.info.gz");
+    await this.sendS3(
+      "put coverage payload",
+      payloadKey,
       new PutObjectCommand({
         Bucket: this.bucket,
-        Key: this.key(suite, "sha", sha, "lcov.info"),
+        Key: payloadKey,
+        Body: payload,
+        ContentEncoding: "gzip",
+        ContentType: "text/plain",
+      }),
+      { rawBytes: lcov.byteLength, storedBytes: payload.byteLength },
+    );
+    if (!(await shouldWritePointer(this, suite, branch, ts))) return;
+    await this.putPointer(suite, branch, sha, ts, payloadKey, lcov.byteLength, payload.byteLength);
+  }
+
+  sendS3(
+    operation: string,
+    key: string,
+    command: object,
+    details: S3OperationDetails = {},
+  ): Promise<unknown> {
+    return sendS3(this.client, this.bucket, operation, key, command, details);
+  }
+
+  private async getVersionedPayload(
+    suite: string,
+    sha: string,
+    pointer: StoredPointer | null,
+    explicitSha: boolean,
+  ): Promise<Buffer | null> {
+    let candidates: Array<{ key: string; encoding: "gzip" | undefined }>;
+    if (pointer?.payloadKey !== undefined) {
+      candidates = [{ key: pointer.payloadKey, encoding: pointer.encoding }];
+    } else if (explicitSha) {
+      candidates = [
+        { key: this.key(suite, "sha", sha, "lcov.info.gz"), encoding: "gzip" },
+        { key: this.key(suite, "sha", sha, "lcov.info"), encoding: undefined },
+      ];
+    } else {
+      candidates = [{ key: this.key(suite, "sha", sha, "lcov.info"), encoding: undefined }];
+    }
+    for (const candidate of candidates) {
+      try {
+        const resp = (await this.sendS3(
+          "get coverage payload",
+          candidate.key,
+          new GetObjectCommand({
+            Bucket: this.bucket,
+            Key: candidate.key,
+          }),
+        )) as { Body: unknown };
+        const body = await bodyToBuffer(resp.Body);
+        return candidate.encoding === "gzip" ? gunzipSync(body) : body;
+      } catch (err) {
+        if (!isNotFound(err)) throw err;
+      }
+    }
+    return null;
+  }
+
+  private async putLegacyPayload(suite: string, lcov: Buffer): Promise<void> {
+    const key = this.key(suite, "lcov.info");
+    await this.sendS3(
+      "put legacy coverage payload",
+      key,
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
         Body: lcov,
         ContentType: "text/plain",
       }),
     );
-    if (!(await this.shouldWritePointer(suite, branch, ts))) return;
-    await this.client.send(
+  }
+
+  private async putPointer(
+    suite: string,
+    branch: string,
+    sha: string,
+    timestamp: string,
+    payloadKey: string,
+    rawBytes: number,
+    storedBytes: number,
+  ): Promise<void> {
+    const pointerKey = this.key(suite, "branch", encodeBranchName(branch), "latest.json");
+    await this.sendS3(
+      "put branch pointer",
+      pointerKey,
       new PutObjectCommand({
         Bucket: this.bucket,
-        Key: this.key(suite, "branch", encodeBranchName(branch), "latest.json"),
-        Body: Buffer.from(JSON.stringify({ sha, timestamp: ts }), "utf8"),
+        Key: pointerKey,
+        Body: Buffer.from(
+          JSON.stringify({
+            sha,
+            timestamp,
+            payloadKey,
+            encoding: "gzip",
+            rawBytes,
+            storedBytes,
+          }),
+          "utf8",
+        ),
         ContentType: "application/json",
       }),
     );
-  }
-
-  private async getLegacy(suite: string): Promise<Buffer | null> {
-    try {
-      const resp = (await this.client.send(
-        new GetObjectCommand({
-          Bucket: this.bucket,
-          Key: this.key(suite, "lcov.info"),
-        }),
-      )) as { Body: unknown };
-      return bodyToBuffer(resp.Body);
-    } catch (err) {
-      if (isNotFound(err)) return null;
-      throw err;
-    }
-  }
-
-  private async shouldWritePointer(
-    suite: string,
-    branch: string,
-    incomingTimestamp: string,
-  ): Promise<boolean> {
-    try {
-      const resp = (await this.client.send(
-        new GetObjectCommand({
-          Bucket: this.bucket,
-          Key: this.key(suite, "branch", encodeBranchName(branch), "latest.json"),
-        }),
-      )) as { Body: unknown };
-      if (resp.Body === undefined) return true;
-      const body = await bodyToBuffer(resp.Body);
-      const current = JSON.parse(body.toString("utf8")) as { timestamp?: string };
-      return !isNewerTimestamp(current.timestamp, incomingTimestamp);
-    } catch (err) {
-      if (isNotFound(err)) return true;
-      throw err;
-    }
-  }
-
-  private async readPointer(
-    suite: string,
-    branch: string,
-  ): Promise<{ sha: string; timestamp?: string }> {
-    const keys = [
-      this.key(suite, "branch", encodeBranchName(branch), "latest.json"),
-      this.key(suite, "branch", branch, "latest.json"),
-    ];
-    let lastNotFound: unknown;
-    for (const key of keys) {
-      try {
-        const resp = (await this.client.send(
-          new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-        )) as { Body: unknown };
-        const body = await bodyToBuffer(resp.Body);
-        return JSON.parse(body.toString("utf8")) as { sha: string; timestamp?: string };
-      } catch (err) {
-        if (!isNotFound(err)) throw err;
-        lastNotFound = err;
-      }
-    }
-    throw lastNotFound;
   }
 }

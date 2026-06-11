@@ -1,7 +1,9 @@
 import { Readable } from "node:stream";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { S3SuiteStore } from "./s3-suite-store.mts";
+import { sendS3 } from "./s3-diagnostics.mts";
 import { encodeBranchName } from "./suite-store.mts";
 
 function makeClient(sendImpl: (cmd: unknown) => Promise<unknown>) {
@@ -12,6 +14,14 @@ const BUCKET = "test-bucket";
 const PREFIX = "coverage";
 const LCOV = "SF:backend/foo.mts\nDA:1,1\nend_of_record\n";
 const POINTER = JSON.stringify({ sha: "abc123", timestamp: "2026-01-01T00:00:00.000Z" });
+const GZIP_POINTER = JSON.stringify({
+  sha: "abc123",
+  timestamp: "2026-01-01T00:00:00.000Z",
+  payloadKey: `${PREFIX}/backend/sha/abc123/lcov.info.gz`,
+  encoding: "gzip",
+  rawBytes: Buffer.byteLength(LCOV),
+  storedBytes: gzipSync(Buffer.from(LCOV)).byteLength,
+});
 
 function notFound() {
   const err = new Error("NoSuchKey");
@@ -91,6 +101,23 @@ describe("S3SuiteStore — get()", () => {
     expect(client.send).toHaveBeenCalledTimes(2);
   });
 
+  it("follows gzip branch pointer payloads", async () => {
+    let callCount = 0;
+    const client = makeClient(async (cmd) => {
+      callCount++;
+      if (cmd instanceof GetObjectCommand) {
+        if (callCount === 1) return { Body: Buffer.from(GZIP_POINTER) };
+        expect(cmd.input.Key).toBe(`${PREFIX}/backend/sha/abc123/lcov.info.gz`);
+        return { Body: gzipSync(Buffer.from(LCOV)) };
+      }
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    const result = await store.get("backend", { branch: "main" });
+    expect(result!.toString()).toBe(LCOV);
+    expect(client.send).toHaveBeenCalledTimes(2);
+  });
+
   it("falls back to legacy lcov.info when no branch pointer exists", async () => {
     let callCount = 0;
     const client = makeClient(async (cmd) => {
@@ -157,13 +184,33 @@ describe("S3SuiteStore — get()", () => {
 
   it("fetches by explicit sha without reading the pointer", async () => {
     const client = makeClient(async (cmd) => {
-      if (cmd instanceof GetObjectCommand) return { Body: Buffer.from(LCOV) };
+      if (cmd instanceof GetObjectCommand) {
+        expect(cmd.input.Key).toBe(`${PREFIX}/backend/sha/abc123/lcov.info.gz`);
+        return { Body: gzipSync(Buffer.from(LCOV)) };
+      }
       return {};
     });
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
     const result = await store.get("backend", { sha: "abc123" });
     expect(result!.toString()).toBe(LCOV);
     expect(client.send).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to raw explicit sha payloads", async () => {
+    let callCount = 0;
+    const client = makeClient(async (cmd) => {
+      callCount++;
+      if (cmd instanceof GetObjectCommand) {
+        if (cmd.input.Key === `${PREFIX}/backend/sha/abc123/lcov.info.gz`) return notFound();
+        expect(cmd.input.Key).toBe(`${PREFIX}/backend/sha/abc123/lcov.info`);
+        return { Body: Buffer.from(LCOV) };
+      }
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    const result = await store.get("backend", { sha: "abc123" });
+    expect(result!.toString()).toBe(LCOV);
+    expect(callCount).toBe(2);
   });
 
   it("returns null when branch pointer is not found", async () => {
@@ -257,7 +304,7 @@ describe("S3SuiteStore — get()", () => {
 });
 
 describe("S3SuiteStore — put()", () => {
-  it("sends two PutObjectCommands: lcov payload and branch pointer", async () => {
+  it("sends compressed lcov payload and branch pointer", async () => {
     const client = makeClient(async () => ({}));
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
     await store.put("backend", Buffer.from(LCOV), { sha: "abc123", branch: "main" });
@@ -267,8 +314,15 @@ describe("S3SuiteStore — put()", () => {
     expect(cmds.filter((c) => c instanceof PutObjectCommand)).toHaveLength(2);
 
     const keys = cmds.filter((c) => c instanceof PutObjectCommand).map((c) => c.input.Key);
-    expect(keys).toContain(`${PREFIX}/backend/sha/abc123/lcov.info`);
+    expect(keys).toContain(`${PREFIX}/backend/sha/abc123/lcov.info.gz`);
     expect(keys).toContain(`${PREFIX}/backend/branch/${encodeBranchName("main")}/latest.json`);
+
+    const payload = cmds
+      .filter((c) => c instanceof PutObjectCommand)
+      .map((c) => c as PutObjectCommand)
+      .find((c) => c.input.Key?.endsWith("lcov.info.gz"))!;
+    expect(payload.input.ContentEncoding).toBe("gzip");
+    expect(gunzipSync(payload.input.Body as Buffer).toString("utf8")).toBe(LCOV);
   });
 
   it("uses provided timestamp in pointer", async () => {
@@ -287,6 +341,10 @@ describe("S3SuiteStore — put()", () => {
       .find((c) => c.input.Key?.endsWith("latest.json"))!;
     const pointer = JSON.parse((pointerCmd.input.Body as Buffer).toString("utf8"));
     expect(pointer.timestamp).toBe(ts);
+    expect(pointer.payloadKey).toBe(`${PREFIX}/backend/sha/abc/lcov.info.gz`);
+    expect(pointer.encoding).toBe("gzip");
+    expect(pointer.rawBytes).toBe(Buffer.byteLength(LCOV));
+    expect(pointer.storedBytes).toBeGreaterThan(0);
   });
 
   it("rejects invalid incoming timestamps", async () => {
@@ -323,7 +381,7 @@ describe("S3SuiteStore — put()", () => {
     const keys = client.send.mock.calls
       .filter((c) => c[0] instanceof PutObjectCommand)
       .map((c) => (c[0] as PutObjectCommand).input.Key);
-    expect(keys).toContain("backend/sha/abc/lcov.info");
+    expect(keys).toContain("backend/sha/abc/lcov.info.gz");
     expect(keys).toContain(`backend/branch/${encodeBranchName("main")}/latest.json`);
   });
 
@@ -356,7 +414,7 @@ describe("S3SuiteStore — put()", () => {
     const putKeys = client.send.mock.calls
       .filter((c) => c[0] instanceof PutObjectCommand)
       .map((c) => (c[0] as PutObjectCommand).input.Key);
-    expect(putKeys).toEqual([`${PREFIX}/backend/sha/old/lcov.info`]);
+    expect(putKeys).toEqual([`${PREFIX}/backend/sha/old/lcov.info.gz`]);
   });
 
   it("writes a branch pointer when no current pointer exists", async () => {
@@ -371,7 +429,7 @@ describe("S3SuiteStore — put()", () => {
       .filter((c) => c[0] instanceof PutObjectCommand)
       .map((c) => (c[0] as PutObjectCommand).input.Key);
     expect(putKeys).toEqual([
-      `${PREFIX}/backend/sha/abc/lcov.info`,
+      `${PREFIX}/backend/sha/abc/lcov.info.gz`,
       `${PREFIX}/backend/branch/${encodeBranchName("main")}/latest.json`,
     ]);
   });
@@ -387,6 +445,30 @@ describe("S3SuiteStore — put()", () => {
     await expect(
       store.put("backend", Buffer.from(LCOV), { sha: "abc", branch: "main" }),
     ).rejects.toThrow("pointer read failed");
+  });
+
+  it("logs named S3 operation diagnostics for successful writes", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const client = makeClient(async (cmd) => {
+        if (cmd instanceof GetObjectCommand) return notFound();
+        return {};
+      });
+      const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+      await store.put("backend", Buffer.from(LCOV), { sha: "abc", branch: "main" });
+
+      const output = stderr.mock.calls.map((call) => String(call[0])).join("");
+      expect(output).toContain('operation="put coverage payload"');
+      expect(output).toContain('operation="get branch pointer for compare"');
+      expect(output).toContain('operation="put branch pointer"');
+      expect(output).toContain("raw_bytes=");
+      expect(output).toContain("stored_bytes=");
+      expect(output).toContain("status=ok");
+      expect(output).toContain("status=failed");
+      expect(output).toContain("NoSuchKey");
+    } finally {
+      stderr.mockRestore();
+    }
   });
 
   it("writes the legacy layout when metadata is omitted", async () => {
@@ -445,4 +527,76 @@ describe("S3SuiteStore — constructor prefix normalization", () => {
     const cmd = client.send.mock.calls[0][0] as InstanceType<typeof ListObjectsV2Command>;
     expect(cmd.input.Prefix).toBe("coverage/");
   });
+
+  it("warns and falls back for invalid S3 timeout env vars", () => {
+    const oldConnection = process.env.COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS;
+    const oldRequest = process.env.COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS;
+    const oldAttempts = process.env.COVERAGE_CHECK_S3_MAX_ATTEMPTS;
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      process.env.COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS = "nope";
+      process.env.COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS = "0";
+      process.env.COVERAGE_CHECK_S3_MAX_ATTEMPTS = "-1";
+      new S3SuiteStore({ bucket: BUCKET });
+
+      const output = stderr.mock.calls.map((call) => String(call[0])).join("");
+      expect(output).toContain("COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS");
+      expect(output).toContain("COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS");
+      expect(output).toContain("COVERAGE_CHECK_S3_MAX_ATTEMPTS");
+    } finally {
+      restoreEnv("COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS", oldConnection);
+      restoreEnv("COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS", oldRequest);
+      restoreEnv("COVERAGE_CHECK_S3_MAX_ATTEMPTS", oldAttempts);
+      stderr.mockRestore();
+    }
+  });
+
+  it("accepts positive integer S3 client env vars", () => {
+    const oldConnection = process.env.COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS;
+    const oldRequest = process.env.COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS;
+    const oldAttempts = process.env.COVERAGE_CHECK_S3_MAX_ATTEMPTS;
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      process.env.COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS = "1234";
+      process.env.COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS = "5678";
+      process.env.COVERAGE_CHECK_S3_MAX_ATTEMPTS = "3";
+      new S3SuiteStore({ bucket: BUCKET });
+
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      restoreEnv("COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS", oldConnection);
+      restoreEnv("COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS", oldRequest);
+      restoreEnv("COVERAGE_CHECK_S3_MAX_ATTEMPTS", oldAttempts);
+      stderr.mockRestore();
+    }
+  });
 });
+
+describe("S3 diagnostics", () => {
+  it("logs non-Error failures", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const client = makeClient(async () => {
+        throw "network down";
+      });
+
+      await expect(sendS3(client, BUCKET, "read", "coverage/backend/lcov.info", {})).rejects.toBe(
+        "network down",
+      );
+
+      const output = stderr.mock.calls.map((call) => String(call[0])).join("");
+      expect(output).toContain('operation="read"');
+      expect(output).toContain('error="network down"');
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+});
+
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
