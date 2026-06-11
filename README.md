@@ -51,11 +51,28 @@ The `--suite` flag on `check` tells the tool to use fresh `--artifacts` for the 
 **S3 key layout:**
 
 ```text
-<prefix>/<suite>/sha/<sha>/lcov.info          # payload
-<prefix>/<suite>/branch/<encoded-branch>/latest.json  # pointer: { "sha": "...", "timestamp": "..." }
+<prefix>/<suite>/sha/<sha>/lcov.info.gz       # gzip payload for new versioned writes
+<prefix>/<suite>/branch/<encoded-branch>/latest.json  # pointer with sha, payloadKey, encoding, byte counts, timestamp
 ```
 
 S3-backed stores need `s3:PutObject` for writes and `s3:GetObject` for reading branch pointers and baselines. The pointer reader also checks the previous unencoded pointer key (for example `branch/main/latest.json`) so stores written before branch-name encoding remain readable.
+
+Versioned S3 writes (`store-put --sha ... --branch ...`) gzip the LCOV payload and write pointer
+metadata with `payloadKey`, `encoding`, `rawBytes`, and `storedBytes`. Existing raw
+`sha/<sha>/lcov.info` payloads and legacy `<suite>/lcov.info` payloads remain readable. Legacy
+writes without `--sha`/`--branch` keep the old raw `<suite>/lcov.info` layout.
+
+Every S3 operation logs a concise diagnostic line to stderr with the operation name, bucket, key,
+elapsed time, and byte counts where applicable. Use these lines to distinguish payload writes,
+branch-pointer reads, and branch-pointer writes when CI storage stalls.
+
+S3 request bounds are configurable with environment variables:
+
+| Variable                                  | Default | Purpose                                  |
+| ----------------------------------------- | ------- | ---------------------------------------- |
+| `COVERAGE_CHECK_S3_CONNECTION_TIMEOUT_MS` | `5000`  | Socket connection timeout for S3 calls   |
+| `COVERAGE_CHECK_S3_REQUEST_TIMEOUT_MS`    | `30000` | Whole-request timeout for S3 calls       |
+| `COVERAGE_CHECK_S3_MAX_ATTEMPTS`          | `2`     | AWS SDK attempt count, including retries |
 
 ### Suite store with filesystem
 
