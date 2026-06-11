@@ -320,6 +320,11 @@ describe("branch name encoding", () => {
     expect(() => encodeBranchName("")).toThrow("invalid branch");
     expect(() => encodeBranchName(null as unknown as string)).toThrow("invalid branch");
   });
+
+  it("throws on path traversal attempts", () => {
+    expect(() => encodeBranchName("../../etc")).toThrow("invalid branch");
+    expect(() => encodeBranchName("..\\..\\etc")).toThrow("invalid branch");
+  });
 });
 
 describe("isNewerTimestamp", () => {
