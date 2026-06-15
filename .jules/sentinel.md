@@ -1,4 +1,9 @@
-## 2026-06-09 - [Prevent argument injection in child_process.spawn]
-**Vulnerability:** Command argument injection could occur if the `baseRef` or `headRef` passed to `git merge-base` or `git diff` via `spawn` started with a hyphen.
-**Learning:** Even when avoiding shell execution with `spawn` and passing arguments as an array, passing an untrusted argument starting with a hyphen (e.g. `--output`) to a child process like `git` or `gh` can be interpreted as a command-line flag rather than a positional argument, leading to argument/command injection vulnerabilities.
-**Prevention:** Validate that any arguments corresponding to variable input (such as Git references) do not start with a hyphen (`-`) before passing them to the child process.
+## 2025-02-28 - Command Injection Risk in GitHub CLI integration
+**Vulnerability:** Command injection risk where user-provided repository names were not explicitly validated before being interpolated into arguments for `gh` child process executions.
+**Learning:** Even when variables are interpolated into larger strings (like `repos/${repo}/issues/...`), explicit input validation against hyphens is required as defense-in-depth to satisfy strict codebase security patterns.
+**Prevention:** Always validate CLI inputs passed down to command runners (like `spawn`) to ensure they do not start with a hyphen (`-`).
+
+## 2025-02-28 - Path Traversal vs Base64 Encoding
+**Vulnerability:** Missing explicit validation for path traversal sequences (`..`, `\`) on branch names.
+**Learning:** While `base64url` encoding intrinsically neutralizes path traversal characters, explicit validation prior to encoding provides defense-in-depth and rejects malformed inputs early.
+**Prevention:** Add explicit pattern checks for invalid characters on user-provided storage keys (like branch names) before they are encoded or used in file paths.

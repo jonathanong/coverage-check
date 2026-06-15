@@ -76,6 +76,9 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
         break;
       case "--repo":
         args.repo = val();
+        if (args.repo.startsWith("-")) {
+          throw new Error("Repository cannot start with a hyphen (prevents argument injection)");
+        }
         break;
       case "--json":
         args.json = val();

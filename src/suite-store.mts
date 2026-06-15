@@ -23,6 +23,9 @@ export function encodeBranchName(branch: string): string {
   if (typeof branch !== "string" || branch.length === 0) {
     throw new Error(`invalid branch: ${JSON.stringify(branch)}`);
   }
+  if (branch.includes("..") || branch.includes("\\")) {
+    throw new Error(`invalid branch: ${JSON.stringify(branch)}`);
+  }
   return Buffer.from(branch, "utf8").toString("base64url");
 }
 
