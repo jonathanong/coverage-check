@@ -60,4 +60,8 @@ describe("upsertComment", () => {
     const calls = lookupErrorGh.mock.calls.map((c) => c[0].join(" "));
     expect(calls.some((c) => c.includes("issues/42/comments") && !c.includes("PATCH"))).toBe(true);
   });
+
+  it("throws when repo starts with a hyphen", async () => {
+    await expect(upsertComment(FAIL_BODY, "-repo", 42, false, makeGh({}))).rejects.toThrow();
+  });
 });

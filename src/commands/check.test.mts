@@ -115,6 +115,12 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("rejects --repo starting with a hyphen", async () => {
+    expect(await main(["--rules", join(tmpDir, "nonexistent.yml"), "--repo", "-malicious"])).toBe(
+      2,
+    );
+  });
+
   it("accepts --suite flag", async () => {
     expect(
       await main([
