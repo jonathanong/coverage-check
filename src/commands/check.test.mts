@@ -487,6 +487,21 @@ describe("runCheck with suite store", () => {
     }
   });
 
+  it("returns exit code 2 when repo format is invalid", async () => {
+    expect(
+      await main([
+        "--rules",
+        join(tmpDir, "nonexistent.yml"),
+        "--artifacts",
+        artifactsDir,
+        "--pr",
+        "1",
+        "--repo",
+        "invalid-repo-format",
+      ]),
+    ).toBe(2);
+  });
+
   it("accepts --store and --suite flags via main()", async () => {
     expect(
       await main([
