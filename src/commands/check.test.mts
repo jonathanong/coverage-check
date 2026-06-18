@@ -102,6 +102,32 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("rejects invalid --repo flag format", async () => {
+    let stderr = "";
+    const origStderrWrite = process.stderr.write;
+    process.stderr.write = (str: string | Uint8Array) => {
+      stderr += str.toString();
+      return true;
+    };
+    try {
+      expect(
+        await main([
+          "--rules",
+          join(tmpDir, "nonexistent.yml"),
+          "--pr",
+          "42",
+          "--repo",
+          "invalid/repo/format",
+          "--artifacts",
+          artifactsDir,
+        ]),
+      ).toBe(2);
+      expect(stderr).toContain('invalid repo format: "invalid/repo/format" (expected owner/repo)');
+    } finally {
+      process.stderr.write = origStderrWrite;
+    }
+  });
+
   it("accepts --strip-prefix flag", async () => {
     expect(
       await main([
