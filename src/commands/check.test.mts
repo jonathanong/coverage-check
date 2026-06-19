@@ -763,6 +763,25 @@ describe("with a real git repo and a known diff", () => {
     ).toBe(1);
   });
 
+  it("fails when --repo has an invalid format", async () => {
+    expect(
+      await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--base",
+        baseSha,
+        "--head",
+        headSha,
+        "--pr",
+        "1",
+        "--repo",
+        "-invalid/repo",
+      ]),
+    ).toBe(2);
+  });
+
   it("combines store suites with current artifacts for coverage check", async () => {
     const storeDir = join(tmpDir, "store");
     mkdirSync(storeDir);
