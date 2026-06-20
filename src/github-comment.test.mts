@@ -66,8 +66,8 @@ describe("upsertComment", () => {
     await expect(upsertComment(FAIL_BODY, "-invalid/repo", 42, false, gh)).rejects.toThrow(
       "Invalid repository format: -invalid/repo. Expected owner/repo.",
     );
-    await expect(upsertComment(FAIL_BODY, "owner-without-slash-repo", 42, false, gh)).rejects.toThrow(
-      "Invalid repository format: owner-without-slash-repo. Expected owner/repo.",
-    );
+    await expect(
+      upsertComment(FAIL_BODY, "owner-without-slash-repo", 42, false, gh),
+    ).rejects.toThrow("Invalid repository format: owner-without-slash-repo. Expected owner/repo.");
   });
 });
