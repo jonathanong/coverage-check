@@ -60,4 +60,14 @@ describe("upsertComment", () => {
     const calls = lookupErrorGh.mock.calls.map((c) => c[0].join(" "));
     expect(calls.some((c) => c.includes("issues/42/comments") && !c.includes("PATCH"))).toBe(true);
   });
+
+  it("throws an error when repository format is invalid", async () => {
+    const gh = makeGh({ "issues/42/comments --paginate": "" });
+    await expect(upsertComment(FAIL_BODY, "-invalid/repo", 42, false, gh)).rejects.toThrow(
+      "Invalid repository format: -invalid/repo. Expected owner/repo.",
+    );
+    await expect(upsertComment(FAIL_BODY, "owner-without-slash-repo", 42, false, gh)).rejects.toThrow(
+      "Invalid repository format: owner-without-slash-repo. Expected owner/repo.",
+    );
+  });
 });
