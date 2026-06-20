@@ -1,3 +1,6 @@
 ## 2025-02-18 - String split vs loop for large files
 **Learning:** For extremely large text payloads like LCOV coverage files, using `String.prototype.split('\n')` can cause severe garbage collection overhead and memory spikes because it instantiates millions of small string objects in a large array.
 **Action:** Instead of `text.split("\n")`, manually traverse large text buffers with `while(start < text.length) { end = text.indexOf('\n', start); ... }`. This cuts execution time by 30-50% for parsing. Also, avoid mutating dependencies (like package.json updates) when optimizing code purely.
+## 2025-02-18 - Avoid String.split() for BRDA records parsing
+**Learning:** Parsing BRDA records inside massive LCOV files using `.split(",")` generates massive amounts of intermediate arrays and strings, causing severe GC pauses. Manual index traversal using `indexOf(",")` on the exact slices avoids allocating this intermediary data entirely, making the parsing routine dramatically faster with huge payloads.
+**Action:** Consistently replace `.split()` with index traversal for performance-critical parsing functions parsing large amounts of small record units, keeping the exact behavioral contract.
