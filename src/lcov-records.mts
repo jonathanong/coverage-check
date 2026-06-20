@@ -59,7 +59,7 @@ function applyRecord(line: string, cov: FullFileCoverage): void {
     const comma2 = line.indexOf(",", comma1 + 1);
     if (comma2 === -1) return;
     const comma3 = line.indexOf(",", comma2 + 1);
-    if (comma3 === -1) return;
+    if (comma3 === -1 || line.indexOf(",", comma3 + 1) !== -1) return;
     const key = line.slice(5, comma3);
     const raw = line.slice(comma3 + 1);
     const hits = raw === "-" ? 0 : parseInt(raw, 10);
