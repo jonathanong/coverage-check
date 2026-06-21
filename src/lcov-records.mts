@@ -52,10 +52,19 @@ function applyRecord(line: string, cov: FullFileCoverage): void {
     if (Number.isFinite(hits) && name)
       cov.functionHits.set(name, (cov.functionHits.get(name) ?? 0) + hits);
   } else if (line.startsWith("BRDA:")) {
-    const parts = line.slice(5).split(",");
-    if (parts.length !== 4) return;
-    const key = `${parts[0]},${parts[1]},${parts[2]}`;
-    const raw = parts[3]!;
+    const firstComma = line.indexOf(",", 5);
+    if (firstComma === -1) return;
+    const secondComma = line.indexOf(",", firstComma + 1);
+    if (secondComma === -1) return;
+    const thirdComma = line.indexOf(",", secondComma + 1);
+    if (thirdComma === -1) return;
+    // ensure there is no 4th comma
+    if (line.indexOf(",", thirdComma + 1) !== -1) return;
+
+    // Optimization: Instead of using `split(",")`, we use `indexOf` and `slice`
+    // to avoid allocating arrays for each BRDA line.
+    const key = line.slice(5, thirdComma);
+    const raw = line.slice(thirdComma + 1);
     const hits = raw === "-" ? 0 : parseInt(raw, 10);
     if (Number.isFinite(hits)) cov.branches.set(key, (cov.branches.get(key) ?? 0) + hits);
   } else if (line.startsWith("DA:")) {
