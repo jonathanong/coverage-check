@@ -21,6 +21,9 @@ async function defaultGhRunner(args: string[]): Promise<string> {
 
 /** Finds the ID of the existing coverage-check sticky comment, if any. */
 async function findExistingComment(repo: string, pr: number, gh: GhRunner): Promise<number | null> {
+  if (!/^[A-Za-z0-9_.][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/.test(repo)) {
+    throw new Error(`Invalid GitHub repository format: ${repo}`);
+  }
   try {
     const raw = await gh([
       "api",
