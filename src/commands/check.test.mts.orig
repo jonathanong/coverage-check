@@ -271,10 +271,6 @@ describe("main integration", () => {
       ]),
     ).toBe(2);
   });
-
-  it("rejects an invalid --repo format", async () => {
-    expect(await main(["--pr", "1", "--repo", "-owner/repo"])).toBe(2);
-  });
 });
 
 describe("runCheck with suite store", () => {
