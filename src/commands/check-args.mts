@@ -129,6 +129,14 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
   if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
   if (args.pr !== null && args.repo.trim() === "")
     throw new Error("--repo is required when --pr is set (or define GITHUB_REPOSITORY)");
+
+  if (args.repo.trim() !== "") {
+    const repoRegex = /^[A-Za-z0-9_.][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/;
+    if (!repoRegex.test(args.repo)) {
+      throw new Error(`Invalid repository format: ${args.repo}. Expected "owner/repo".`);
+    }
+  }
+
   args.store = makeStore({ fs: storeFs, s3: storeS3 });
   return args;
 }
