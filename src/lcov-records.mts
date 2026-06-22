@@ -61,16 +61,18 @@ function applyRecord(line: string, cov: FullFileCoverage): void {
     const c3 = rest.indexOf(",", c2 + 1);
     if (c3 === -1) return;
 
-    // We only want the 4th value, extra commas should be ignored or included in the raw string,
-    // matching what split(',', 4) would do if used, or how `lcov-to-istanbul.test.mts` expects.
-    // The previous implementation used .split(',') which produces an array of length > 4 if there are extra fields.
-    // The previous implementation also early returned if length !== 4.
-    // So to be exact:
-    let comma4 = rest.indexOf(",", c3 + 1);
-    if (comma4 !== -1) return; // Strict length check equivalent to parts.length !== 4
-
     const key = rest.slice(0, c3);
-    const raw = rest.slice(c3 + 1);
+
+    // We only want exactly 4 values, matching what `split(",")` expects.
+    let comma4 = rest.indexOf(",", c3 + 1);
+
+    const raw = comma4 === -1 ? rest.slice(c3 + 1) : rest.slice(c3 + 1, comma4);
+
+    // The previous implementation used `const parts = line.slice(5).split(",");`
+    // and early returned if `parts.length !== 4`. However, `split()` drops trailing elements,
+    // but its behavior in tests showed it might be less strict depending on other logic.
+    // If we want strict equivalence to `parts.length !== 4`:
+    if (comma4 !== -1) return;
     const hits = raw === "-" ? 0 : parseInt(raw, 10);
     if (Number.isFinite(hits)) cov.branches.set(key, (cov.branches.get(key) ?? 0) + hits);
   } else if (line.startsWith("DA:")) {
