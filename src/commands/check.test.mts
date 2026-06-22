@@ -274,6 +274,8 @@ describe("main integration", () => {
 
   it("rejects an invalid --repo format", async () => {
     expect(await main(["--pr", "1", "--repo", "-owner/repo"])).toBe(2);
+    expect(await main(["--pr", "1", "--repo", "owner/-repo"])).toBe(2);
+    expect(await main(["--pr", "1", "--repo", "owner"])).toBe(2);
   });
 });
 
