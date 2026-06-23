@@ -16,6 +16,13 @@ function makeGh(responses: Record<string, string>): GhRunner & ReturnType<typeof
 const FAIL_BODY = `${COMMENT_MARKER}\n## failed`;
 
 describe("upsertComment", () => {
+  it("throws an error for invalid repo format", async () => {
+    const gh = makeGh({});
+    await expect(upsertComment(FAIL_BODY, "-invalid/repo", 42, false, gh)).rejects.toThrow(
+      "Invalid repository format (prevents argument injection): -invalid/repo",
+    );
+  });
+
   it("posts a new comment on failure when none exists", async () => {
     const gh = makeGh({ "issues/42/comments --paginate": "" });
     await upsertComment(FAIL_BODY, "owner/repo", 42, false, gh);

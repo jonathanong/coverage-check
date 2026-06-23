@@ -41,6 +41,13 @@ async function findExistingComment(repo: string, pr: number, gh: GhRunner): Prom
   }
 }
 
+function validateRepoFormat(repo: string): void {
+  const repoRegex = /^[A-Za-z0-9_.][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/;
+  if (!repoRegex.test(repo)) {
+    throw new Error(`Invalid repository format (prevents argument injection): ${repo}`);
+  }
+}
+
 /**
  * Posts or updates the sticky coverage-check comment on a pull request.
  *
@@ -55,6 +62,8 @@ export async function upsertComment(
   passed: boolean,
   gh: GhRunner = defaultGhRunner,
 ): Promise<void> {
+  validateRepoFormat(repo);
+
   const existingId = await findExistingComment(repo, pr, gh);
 
   if (passed && existingId === null) return;
