@@ -21,6 +21,10 @@ async function defaultGhRunner(args: string[]): Promise<string> {
 
 /** Finds the ID of the existing coverage-check sticky comment, if any. */
 async function findExistingComment(repo: string, pr: number, gh: GhRunner): Promise<number | null> {
+  if (repo.startsWith("-")) {
+    throw new Error("Repository cannot start with a hyphen (prevents argument injection)");
+  }
+
   try {
     const raw = await gh([
       "api",
@@ -55,6 +59,10 @@ export async function upsertComment(
   passed: boolean,
   gh: GhRunner = defaultGhRunner,
 ): Promise<void> {
+  if (repo.startsWith("-")) {
+    throw new Error("Repository cannot start with a hyphen (prevents argument injection)");
+  }
+
   const existingId = await findExistingComment(repo, pr, gh);
 
   if (passed && existingId === null) return;
