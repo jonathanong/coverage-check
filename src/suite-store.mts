@@ -2,6 +2,18 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SuiteMeta } from "./types.mts";
 
+export function assertValidRepo(value: string): void {
+  if (value === "") return;
+  if (
+    typeof value !== "string" ||
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) ||
+    value.startsWith("-") ||
+    value.includes("/-")
+  ) {
+    throw new Error(`invalid repo: ${JSON.stringify(value)}`);
+  }
+}
+
 export function assertSafePathComponent(value: string, label: string): void {
   if (
     typeof value !== "string" ||

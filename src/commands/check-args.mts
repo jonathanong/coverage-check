@@ -1,5 +1,5 @@
 import { makeStore } from "../store-factory.mts";
-import { assertSafePathComponent } from "../suite-store.mts";
+import { assertSafePathComponent, assertValidRepo } from "../suite-store.mts";
 import type { SuiteStore } from "../suite-store.mts";
 import type { GhRunner } from "../github-comment.mts";
 
@@ -76,6 +76,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
         break;
       case "--repo":
         args.repo = val();
+        assertValidRepo(args.repo);
         break;
       case "--json":
         args.json = val();
@@ -129,6 +130,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
   if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
   if (args.pr !== null && args.repo.trim() === "")
     throw new Error("--repo is required when --pr is set (or define GITHUB_REPOSITORY)");
+  assertValidRepo(args.repo);
   args.store = makeStore({ fs: storeFs, s3: storeS3 });
   return args;
 }

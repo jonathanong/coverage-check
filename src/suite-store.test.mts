@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   assertSafePathComponent,
+  assertValidRepo,
   decodeBranchName,
   encodeBranchName,
   FileSystemSuiteStore,
@@ -306,6 +307,22 @@ describe("assertSafePathComponent", () => {
   it("rejects non-string values at runtime (e.g. from JSON.parse)", () => {
     expect(() => assertSafePathComponent(123 as unknown as string, "sha")).toThrow("invalid sha");
     expect(() => assertSafePathComponent(null as unknown as string, "sha")).toThrow("invalid sha");
+  });
+});
+
+describe("assertValidRepo", () => {
+  it("accepts valid owner/repo formats", () => {
+    expect(() => assertValidRepo("owner/repo")).not.toThrow();
+    expect(() => assertValidRepo("jonathanong/coverage-check")).not.toThrow();
+    expect(() => assertValidRepo("")).not.toThrow(); // Empty string is allowed when PR is missing
+  });
+
+  it("rejects invalid repo formats", () => {
+    expect(() => assertValidRepo("-owner/repo")).toThrow("invalid repo");
+    expect(() => assertValidRepo("owner/-repo")).toThrow("invalid repo");
+    expect(() => assertValidRepo("owner/repo; echo hack")).toThrow("invalid repo");
+    expect(() => assertValidRepo("owner_repo")).toThrow("invalid repo");
+    expect(() => assertValidRepo(123 as unknown as string)).toThrow("invalid repo");
   });
 });
 
