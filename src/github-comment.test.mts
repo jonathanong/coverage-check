@@ -60,4 +60,17 @@ describe("upsertComment", () => {
     const calls = lookupErrorGh.mock.calls.map((c) => c[0].join(" "));
     expect(calls.some((c) => c.includes("issues/42/comments") && !c.includes("PATCH"))).toBe(true);
   });
+
+  it("throws an error when repository format is invalid or starts with a hyphen", async () => {
+    const gh = makeGh({});
+    await expect(upsertComment(FAIL_BODY, "-owner/repo", 42, false, gh)).rejects.toThrow(
+      "Invalid repository format or starts with a hyphen",
+    );
+    await expect(upsertComment(FAIL_BODY, "owner/-repo", 42, false, gh)).rejects.toThrow(
+      "Invalid repository format or starts with a hyphen",
+    );
+    await expect(upsertComment(FAIL_BODY, "invalidrepo", 42, false, gh)).rejects.toThrow(
+      "Invalid repository format or starts with a hyphen",
+    );
+  });
 });

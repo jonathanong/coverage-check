@@ -55,6 +55,12 @@ export async function upsertComment(
   passed: boolean,
   gh: GhRunner = defaultGhRunner,
 ): Promise<void> {
+  if (!/^[A-Za-z0-9_.][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/.test(repo)) {
+    throw new Error(
+      "Invalid repository format or starts with a hyphen (prevents argument injection)",
+    );
+  }
+
   const existingId = await findExistingComment(repo, pr, gh);
 
   if (passed && existingId === null) return;
