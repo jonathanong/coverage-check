@@ -152,7 +152,10 @@ describe("parseLcovFull", () => {
       "FN:abc,fn", // lineNum is NaN → isFinite false → skip
       "FNDA:nohits", // no comma → return early
       "FNDA:abc,fn", // hits is NaN → isFinite false → skip
+      "BRDA:1", // early return
+      "BRDA:1,2", // early return
       "BRDA:1,2,3", // only 3 parts (need 4) → return early
+      "BRDA:1,2,3,4,5", // early return
       "BRDA:1,0,0,abc", // hits is not "-" and not a number → NaN → skip
       "DA:noline", // no comma → return early
       "DA:abc,1", // lineNum is NaN → isFinite false → skip
