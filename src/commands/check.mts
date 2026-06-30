@@ -12,6 +12,8 @@ import { upsertComment } from "../github-comment.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { writeSummary } from "../step-summary.mts";
 import { parseCheckArgs } from "./check-args.mts";
+import { checkHelp } from "./check-render.mts";
+import { emptyResult, toJsonPayload } from "./check-result.mts";
 import {
   missingRequiredArtifacts,
   nonContributingWarnings,
@@ -19,10 +21,12 @@ import {
   checkRequiredArtifacts,
 } from "./check-output.mts";
 import type { CheckArgs } from "./check-args.mts";
+import type { CheckRunResult } from "./check-result.mts";
 import type { SuiteSource } from "../step-summary.mts";
 import type { DiffLineContent, LcovData } from "../types.mts";
 import type { CoverageCheckResult } from "../types.mts";
 export type { CheckArgs } from "./check-args.mts";
+export type { CheckRunResult } from "./check-result.mts";
 
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
@@ -40,6 +44,11 @@ export type EvaluatedCheck = {
 };
 
 export async function main(argv: string[]): Promise<number> {
+  if (argv.length === 1 && (argv[0] === "--help" || argv[0] === "-h")) {
+    stdout(checkHelp());
+    return 0;
+  }
+
   let args: CheckArgs;
   try {
     args = parseCheckArgs(argv);
@@ -50,13 +59,34 @@ export async function main(argv: string[]): Promise<number> {
   return runCheck(args);
 }
 
+export async function checkCoverage(args: CheckArgs): Promise<CheckRunResult> {
+  return toCheckRunResult(args, await evaluateCheck(args));
+}
+
+function toCheckRunResult(args: CheckArgs, evaluated: EvaluatedCheck): CheckRunResult {
+  const skippedReason = evaluated.skippedReason ?? null;
+  const skipped =
+    evaluated.result === null &&
+    skippedReason !== null &&
+    skippedReason.startsWith("no coverage data found") &&
+    !(args.failOnEmpty ?? false);
+  return {
+    result: evaluated.result ?? (skipped ? emptyResult(true) : null),
+    exitCode: evaluated.exitCode as 0 | 1 | 2,
+    advisory: args.advisory ?? false,
+    skipped,
+    error: skipped ? null : skippedReason,
+    warnings: skipped ? [`coverage-check: ${skippedReason}`] : evaluated.warnings,
+  };
+}
+
 export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
   const branch = args.branch ?? "main";
   const runUrl =
     process.env["GITHUB_SERVER_URL"] && process.env["GITHUB_RUN_ID"]
       ? `${process.env["GITHUB_SERVER_URL"]}/${args.repo}/actions/runs/${process.env["GITHUB_RUN_ID"]}`
       : "N/A";
-  const emptyResult = (exitCode: number, skippedReason: string): EvaluatedCheck => ({
+  const emptyEvaluation = (exitCode: number, skippedReason: string): EvaluatedCheck => ({
     exitCode,
     result: null,
     suiteSources: [],
@@ -72,11 +102,11 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
   try {
     rules = withIgnoredPaths(loadRules(args.rules), args.ignorePaths);
   } catch (err) {
-    return emptyResult(2, `failed to load rules: ${err}`);
+    return emptyEvaluation(2, `failed to load rules: ${err}`);
   }
 
   if (missingRequiredArtifacts(args.artifacts, args.requireArtifacts ?? []).length > 0) {
-    return emptyResult(2, "missing required coverage artifact");
+    return emptyEvaluation(2, "missing required coverage artifact");
   }
 
   const stripPrefixes = buildStripPrefixes(args.stripPrefixes);
@@ -125,7 +155,7 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
   }
 
   if (reports.length === 0) {
-    return emptyResult(
+    return emptyEvaluation(
       args.failOnEmpty ? 1 : 0,
       args.failOnEmpty
         ? `no coverage data found under ${args.artifacts}`
@@ -178,7 +208,7 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
         baseline = mergeLcov(baselineReports);
       }
     } catch (err) {
-      stderr(`coverage-check: warning: failed to load baseline from store: ${String(err)}`);
+      warnings.push(`coverage-check: warning: failed to load baseline from store: ${String(err)}`);
     }
   }
 
@@ -203,14 +233,17 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
 
 export async function runCheck(args: CheckArgs): Promise<number> {
   const evaluated = await evaluateCheck(args);
+  const check = toCheckRunResult(args, evaluated);
+  const jsonToStdout = args.json === "-";
 
   if (evaluated.result === null) {
-    const skippedReason = evaluated.skippedReason as string;
-    if (skippedReason === "missing required coverage artifact") {
+    if (evaluated.skippedReason === "missing required coverage artifact") {
       checkRequiredArtifacts(args.artifacts, args.requireArtifacts!);
       return evaluated.exitCode;
     }
-    stderr(`coverage-check: ${skippedReason}`);
+    if (args.json) writeJson(args.json, check);
+    if (check.error !== null) stderr(`coverage-check: ${check.error}`);
+    for (const warning of check.warnings) stderr(warning);
     return evaluated.exitCode;
   }
 
@@ -219,11 +252,42 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   const diffContent = evaluated.diffContent;
   const passed = result.passed;
 
-  if (args.json) {
-    writeFileSync(args.json, JSON.stringify(result, null, 2));
+  if (args.json) writeJson(args.json, check);
+  if (!jsonToStdout) printHumanResult(result, diffContent);
+
+  const summaryFile =
+    args.summaryFile !== undefined
+      ? args.summaryFile
+      : (process.env["GITHUB_STEP_SUMMARY"] ?? null);
+  if (summaryFile) {
+    try {
+      writeSummary(summaryFile, evaluated.suiteSources, result, evaluated.runUrl, evaluated.branch);
+    } catch (err) {
+      stderr(`coverage-check: failed to write step summary: ${err}`);
+      return 2;
+    }
   }
 
-  if (!passed) {
+  if (args.pr !== null && args.repo) {
+    const body = passed ? "" : renderFailureComment(result, evaluated.runUrl);
+    try {
+      await upsertComment(body, args.repo, args.pr, passed, args.gh);
+    } catch (err) {
+      stderr(`coverage-check: failed to post PR comment: ${err}`);
+    }
+  }
+
+  return evaluated.exitCode;
+}
+
+function writeJson(path: string, check: CheckRunResult): void {
+  const json = `${JSON.stringify(toJsonPayload(check), null, 2)}\n`;
+  if (path === "-") process.stdout.write(json);
+  else writeFileSync(path, json);
+}
+
+function printHumanResult(result: CoverageCheckResult, diffContent: DiffLineContent | null): void {
+  if (!result.passed) {
     stdout("\ncoverage-check: FAILED\n");
     for (const bucket of result.buckets.filter((b) => !b.passed)) {
       /* c8 ignore next -- bucket.coverable is always > 0 by patch-coverage.mts L36 guard */
@@ -256,28 +320,4 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   }
 
   printDropOutput(result.drops);
-
-  const summaryFile =
-    args.summaryFile !== undefined
-      ? args.summaryFile
-      : (process.env["GITHUB_STEP_SUMMARY"] ?? null);
-  if (summaryFile) {
-    try {
-      writeSummary(summaryFile, evaluated.suiteSources, result, evaluated.runUrl, evaluated.branch);
-    } catch (err) {
-      stderr(`coverage-check: failed to write step summary: ${err}`);
-      return 2;
-    }
-  }
-
-  if (args.pr !== null && args.repo) {
-    const body = passed ? "" : renderFailureComment(result, evaluated.runUrl);
-    try {
-      await upsertComment(body, args.repo, args.pr, passed, args.gh);
-    } catch (err) {
-      stderr(`coverage-check: failed to post PR comment: ${err}`);
-    }
-  }
-
-  return evaluated.exitCode;
 }

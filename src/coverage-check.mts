@@ -1,4 +1,4 @@
-export { evaluateCheck, runCheck } from "./commands/check.mts";
+export { checkCoverage, evaluateCheck, runCheck } from "./commands/check.mts";
 export { runStorePut } from "./commands/store-put.mts";
 export { runMerge } from "./commands/merge.mts";
 export {
@@ -15,7 +15,7 @@ export { parseLcovFull, mergeLcovFull, toLcovFull } from "./lcov-records.mts";
 export { collectLcovFiles } from "./load-artifacts.mts";
 export { loadRules, zeroThresholdGlobs } from "./rules.mts";
 
-export type { CheckArgs, EvaluatedCheck } from "./commands/check.mts";
+export type { CheckArgs, CheckRunResult, EvaluatedCheck } from "./commands/check.mts";
 export type { StorePutArgs } from "./commands/store-put.mts";
 export type { MergeArgs } from "./commands/merge.mts";
 export type {
