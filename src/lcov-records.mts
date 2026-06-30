@@ -16,6 +16,9 @@ export type FullFileCoverage = {
 /** Map from normalized file path → full LCOV coverage data. */
 export type FullLcovData = Map<string, FullFileCoverage>;
 
+const BRDA_PREFIX = "BRDA:";
+const BRDA_PREFIX_LEN = BRDA_PREFIX.length;
+
 function normalizeSfPath(rawPath: string, stripPrefixes: string[]): string {
   let path = rawPath.replace(/\\/g, "/").replace(/^\.\//, "");
   for (const prefix of stripPrefixes) {
@@ -37,6 +40,24 @@ function getOrCreate(data: FullLcovData, file: string): FullFileCoverage {
   return cov;
 }
 
+type BrdaResult = { key: string; hits: number };
+
+function parseBrda(line: string): BrdaResult | null {
+  const c1 = line.indexOf(",", BRDA_PREFIX_LEN);
+  if (c1 === -1) return null;
+  const c2 = line.indexOf(",", c1 + 1);
+  if (c2 === -1) return null;
+  const c3 = line.indexOf(",", c2 + 1);
+  if (c3 === -1) return null;
+  if (line.indexOf(",", c3 + 1) !== -1) return null;
+
+  const key = line.slice(BRDA_PREFIX_LEN, c3);
+  const raw = line.slice(c3 + 1);
+  const hits = raw === "-" ? 0 : parseInt(raw, 10);
+  if (!Number.isFinite(hits)) return null;
+  return { key, hits };
+}
+
 function applyRecord(line: string, cov: FullFileCoverage): void {
   if (line.startsWith("FN:")) {
     const comma = line.indexOf(",", 3);
@@ -51,20 +72,10 @@ function applyRecord(line: string, cov: FullFileCoverage): void {
     const name = line.slice(comma + 1);
     if (Number.isFinite(hits) && name)
       cov.functionHits.set(name, (cov.functionHits.get(name) ?? 0) + hits);
-  } else if (line.startsWith("BRDA:")) {
-    // Optimization: Instead of using `split(",")` which allocates an array, manually find commas
-    const c1 = line.indexOf(",", 5);
-    if (c1 === -1) return;
-    const c2 = line.indexOf(",", c1 + 1);
-    if (c2 === -1) return;
-    const c3 = line.indexOf(",", c2 + 1);
-    if (c3 === -1) return;
-    if (line.indexOf(",", c3 + 1) !== -1) return;
-
-    const key = line.slice(5, c3);
-    const raw = line.slice(c3 + 1);
-    const hits = raw === "-" ? 0 : parseInt(raw, 10);
-    if (Number.isFinite(hits)) cov.branches.set(key, (cov.branches.get(key) ?? 0) + hits);
+  } else if (line.startsWith(BRDA_PREFIX)) {
+    const brda = parseBrda(line);
+    if (brda === null) return;
+    cov.branches.set(brda.key, (cov.branches.get(brda.key) ?? 0) + brda.hits);
   } else if (line.startsWith("DA:")) {
     const comma = line.indexOf(",", 3);
     if (comma === -1) return;
