@@ -21,11 +21,7 @@ async function defaultGhRunner(args: string[]): Promise<string> {
 /* c8 ignore stop */
 
 /** Finds the ID of the existing coverage-check sticky comment, if any. */
-async function findExistingComment(
-  repo: string,
-  pr: number,
-  gh: GhRunner,
-): Promise<number | null> {
+async function findExistingComment(repo: string, pr: number, gh: GhRunner): Promise<number | null> {
   try {
     const raw = await gh([
       "api",

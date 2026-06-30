@@ -79,8 +79,6 @@ describe("upsertComment", () => {
 
   it("accepts a leading-hyphen repo segment after trimming", async () => {
     const gh = makeGh({ "issues/42/comments --paginate": "" });
-    await expect(
-      upsertComment(FAIL_BODY, " owner/-repo ", 42, false, gh),
-    ).resolves.toBeUndefined();
+    await expect(upsertComment(FAIL_BODY, " owner/-repo ", 42, false, gh)).resolves.toBeUndefined();
   });
 });
