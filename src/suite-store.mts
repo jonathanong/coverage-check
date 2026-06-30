@@ -116,11 +116,12 @@ export class FileSystemSuiteStore implements SuiteStore {
     }
     const { sha, branch } = meta;
     assertSafePathComponent(sha, "sha");
+    const encodedBranch = encodeBranchName(branch);
     const shaDir = join(this.root, suite, "sha", sha);
     mkdirSync(shaDir, { recursive: true });
     writeFileSync(join(shaDir, "lcov.info"), lcov);
 
-    const branchDir = join(this.root, suite, "branch", encodeBranchName(branch));
+    const branchDir = join(this.root, suite, "branch", encodedBranch);
     mkdirSync(branchDir, { recursive: true });
     const pointerPath = join(branchDir, "latest.json");
     const timestamp = meta.timestamp ?? new Date().toISOString();

@@ -87,6 +87,7 @@ export class S3SuiteStore implements SuiteStore {
     }
     const { sha, branch } = meta;
     assertSafePathComponent(sha, "sha");
+    const encodedBranch = encodeBranchName(branch);
     const ts = meta.timestamp ?? new Date().toISOString();
     assertValidTimestamp(ts);
     const payload = gzipSync(lcov);
@@ -103,7 +104,7 @@ export class S3SuiteStore implements SuiteStore {
       }),
       { rawBytes: lcov.byteLength, storedBytes: payload.byteLength },
     );
-    if (!(await shouldWritePointer(this, suite, branch, ts))) return;
+    if (!(await shouldWritePointer(this, suite, encodedBranch, ts))) return;
     await this.putPointer(suite, branch, sha, ts, payloadKey, lcov.byteLength, payload.byteLength);
   }
 
