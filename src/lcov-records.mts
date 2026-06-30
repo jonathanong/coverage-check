@@ -52,10 +52,17 @@ function applyRecord(line: string, cov: FullFileCoverage): void {
     if (Number.isFinite(hits) && name)
       cov.functionHits.set(name, (cov.functionHits.get(name) ?? 0) + hits);
   } else if (line.startsWith("BRDA:")) {
-    const parts = line.slice(5).split(",");
-    if (parts.length !== 4) return;
-    const key = `${parts[0]},${parts[1]},${parts[2]}`;
-    const raw = parts[3]!;
+    // Optimization: Instead of using `split(",")` which allocates an array, manually find commas
+    const c1 = line.indexOf(",", 5);
+    if (c1 === -1) return;
+    const c2 = line.indexOf(",", c1 + 1);
+    if (c2 === -1) return;
+    const c3 = line.indexOf(",", c2 + 1);
+    if (c3 === -1) return;
+    if (line.indexOf(",", c3 + 1) !== -1) return;
+
+    const key = line.slice(5, c3);
+    const raw = line.slice(c3 + 1);
     const hits = raw === "-" ? 0 : parseInt(raw, 10);
     if (Number.isFinite(hits)) cov.branches.set(key, (cov.branches.get(key) ?? 0) + hits);
   } else if (line.startsWith("DA:")) {
