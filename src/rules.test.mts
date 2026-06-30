@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadRules, matchRule } from "./rules.mts";
+import { loadRules, matchRule, zeroThresholdGlobs } from "./rules.mts";
 import type { CoverageRule } from "./types.mts";
 
 const rules: CoverageRule[] = [
@@ -143,5 +143,27 @@ describe("loadRules", () => {
       "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n    max_coverage_drop: 0.5\n",
     );
     expect(() => loadRules(path)).toThrow("requires no_coverage_drop");
+  });
+});
+
+describe("zeroThresholdGlobs", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "coverage-check-rules-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns globs with a zero patch coverage threshold", () => {
+    const path = join(tmpDir, "rules.yml");
+    writeFileSync(
+      path,
+      "rules:\n  - paths: generated/**\n    patch_coverage_min: 0\n  - paths: backend/**\n    patch_coverage_min: 90\n",
+    );
+
+    expect(zeroThresholdGlobs(path)).toEqual(["generated/**"]);
   });
 });

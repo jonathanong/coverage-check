@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseCheckArgs } from "./check-args.mts";
-import { main, runCheck } from "./check.mts";
+import { evaluateCheck, main, runCheck } from "./check.mts";
 import { FileSystemSuiteStore } from "../suite-store.mts";
 
 describe("main argument validation", () => {
@@ -208,6 +208,20 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("accepts --aggregate-artifacts and --ignore-path flags", async () => {
+    expect(
+      await main([
+        "--rules",
+        join(tmpDir, "nonexistent.yml"),
+        "--aggregate-artifacts",
+        "--ignore-path",
+        "backend/generated/**",
+        "--artifacts",
+        artifactsDir,
+      ]),
+    ).toBe(2);
+  });
+
   it("accepts --branch flag with a real branch name", async () => {
     expect(
       await main([
@@ -257,6 +271,12 @@ describe("main integration", () => {
     expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir])).toBe(0);
   });
 
+  it("returns 1 when --fail-on-empty is set and no coverage data is found", async () => {
+    expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir, "--fail-on-empty"])).toBe(
+      1,
+    );
+  });
+
   it("returns 2 when a required artifact is missing", async () => {
     expect(
       await main([
@@ -268,6 +288,33 @@ describe("main integration", () => {
         "coverage-missing/lcov.info",
       ]),
     ).toBe(2);
+  });
+
+  it("prints missing required artifacts through runCheck", async () => {
+    const errors: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      errors.push(String(chunk));
+      return true;
+    });
+
+    expect(
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: "HEAD",
+        head: "HEAD",
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: null,
+        requireArtifacts: ["coverage-missing/lcov.info"],
+      }),
+    ).toBe(2);
+    expect(errors.join("")).toContain(
+      "::error:: missing expected coverage artifact: coverage-missing/lcov.info",
+    );
   });
 
   it("passes --require-artifact when the file exists", async () => {
@@ -471,6 +518,131 @@ describe("runCheck with suite store", () => {
         suite: "backend",
       }),
     ).toBe(0);
+  });
+
+  it("evaluateCheck returns structured JSON-equivalent results without writing a file", async () => {
+    writeFileSync(join(process.cwd(), "backend", "foo.mts"), "const a = 1\nconst b = 2\n");
+    execSync('git add . && git commit -m "change"', {
+      cwd: process.cwd(),
+      shell: "/bin/sh",
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "T",
+        GIT_AUTHOR_EMAIL: "t@t.com",
+        GIT_COMMITTER_NAME: "T",
+        GIT_COMMITTER_EMAIL: "t@t.com",
+      },
+    });
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:2,0\nend_of_record\n");
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "HEAD~1",
+      head: "HEAD",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: "backend",
+    });
+
+    expect(evaluated.exitCode).toBe(1);
+    expect(evaluated.result?.passed).toBe(false);
+    expect(evaluated.result?.buckets[0]?.files[0]?.uncoveredLines).toEqual([2]);
+  });
+
+  it("--ignore-path prepends a zero-threshold override for matching changed files", async () => {
+    writeFileSync(join(process.cwd(), "backend", "foo.mts"), "const a = 1\nconst b = 2\n");
+    execSync('git add . && git commit -m "change"', {
+      cwd: process.cwd(),
+      shell: "/bin/sh",
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "T",
+        GIT_AUTHOR_EMAIL: "t@t.com",
+        GIT_COMMITTER_NAME: "T",
+        GIT_COMMITTER_EMAIL: "t@t.com",
+      },
+    });
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:2,0\nend_of_record\n");
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "HEAD~1",
+      head: "HEAD",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: "backend",
+      ignorePaths: ["backend/**"],
+    });
+
+    expect(evaluated.exitCode).toBe(0);
+    expect(evaluated.result?.passed).toBe(true);
+    expect(evaluated.result?.buckets[0]?.threshold).toBe(0);
+  });
+
+  it("--aggregate-artifacts warns once for non-contributing fresh fan-in artifacts", async () => {
+    mkdirSync(join(artifactsDir, "coverage-a"));
+    mkdirSync(join(artifactsDir, "coverage-b"));
+    writeFileSync(
+      join(artifactsDir, "coverage-a", "lcov.info"),
+      "SF:other/a.mts\nDA:1,1\nend_of_record\n",
+    );
+    writeFileSync(
+      join(artifactsDir, "coverage-b", "lcov.info"),
+      "SF:other/b.mts\nDA:1,1\nend_of_record\n",
+    );
+    writeFileSync(join(process.cwd(), "backend", "foo.mts"), "const a = 1\nconst b = 2\n");
+    execSync('git add . && git commit -m "change"', {
+      cwd: process.cwd(),
+      shell: "/bin/sh",
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "T",
+        GIT_AUTHOR_EMAIL: "t@t.com",
+        GIT_COMMITTER_NAME: "T",
+        GIT_COMMITTER_EMAIL: "t@t.com",
+      },
+    });
+
+    const unaggregated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "HEAD~1",
+      head: "HEAD",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: "backend",
+    });
+    const aggregated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "HEAD~1",
+      head: "HEAD",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: "backend",
+      aggregateArtifacts: true,
+    });
+
+    expect(unaggregated.warnings).toHaveLength(2);
+    expect(aggregated.warnings).toHaveLength(1);
+    expect(aggregated.warnings[0]).toContain("aggregated artifacts");
   });
 
   it("handles a store that returns null from get() gracefully", async () => {
