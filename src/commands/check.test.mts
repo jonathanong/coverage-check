@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseCheckArgs } from "./check-args.mts";
 import { main, runCheck } from "./check.mts";
 import { FileSystemSuiteStore } from "../suite-store.mts";
 
@@ -73,6 +74,17 @@ describe("main argument validation", () => {
         " owner/repo ",
       ]),
     ).toBe(2);
+  });
+
+  it("allows an empty repo when no PR is being commented", () => {
+    const saved = process.env["GITHUB_REPOSITORY"];
+    delete process.env["GITHUB_REPOSITORY"];
+    try {
+      expect(parseCheckArgs([]).repo).toBe("");
+    } finally {
+      if (saved !== undefined) process.env["GITHUB_REPOSITORY"] = saved;
+      else delete process.env["GITHUB_REPOSITORY"];
+    }
   });
 
   it("uses fallback defaults when GITHUB_REPOSITORY/REF_NAME/STEP_SUMMARY are unset", async () => {
