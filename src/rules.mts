@@ -42,6 +42,22 @@ export function loadRules(rulesPath: string): CoverageRule[] {
   return parsed.rules;
 }
 
+/** Returns path globs whose patch coverage threshold is exactly zero. */
+export function zeroThresholdGlobs(rulesPath: string): string[] {
+  return loadRules(rulesPath).flatMap((rule) =>
+    rule.patch_coverage_min === 0 ? [rule.paths] : [],
+  );
+}
+
+/** Prepends zero-threshold rules for paths that should be ignored by this run. */
+export function withIgnoredPaths(
+  rules: CoverageRule[],
+  ignorePaths: string[] = [],
+): CoverageRule[] {
+  if (ignorePaths.length === 0) return rules;
+  return [...ignorePaths.map((paths) => ({ paths, patch_coverage_min: 0 })), ...rules];
+}
+
 /** Returns the first matching rule for a repo-root-relative file path, or null. */
 export function matchRule(file: string, rules: CoverageRule[]): CoverageRule | null {
   for (const rule of rules) {

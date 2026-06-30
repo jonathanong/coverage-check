@@ -27,6 +27,12 @@ export type CheckArgs = {
   dropOnlyChangedAreas?: boolean;
   /** Relative paths under --artifacts that must exist before the check runs (repeatable). */
   requireArtifacts?: string[];
+  /** Exit non-zero when no LCOV data is available instead of treating the check as skipped. */
+  failOnEmpty?: boolean;
+  /** Merge fresh LCOV artifacts before evaluating, so fan-in artifacts are treated as one source. */
+  aggregateArtifacts?: boolean;
+  /** Path globs to exempt by prepending zero-threshold override rules (repeatable). */
+  ignorePaths?: string[];
 };
 
 export function parseCheckArgs(argv: string[]): CheckArgs {
@@ -49,6 +55,9 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     advisory: false,
     dropOnlyChangedAreas: false,
     requireArtifacts: [],
+    failOnEmpty: false,
+    aggregateArtifacts: false,
+    ignorePaths: [],
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -120,6 +129,15 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
         break;
       case "--require-artifact":
         args.requireArtifacts!.push(val());
+        break;
+      case "--fail-on-empty":
+        args.failOnEmpty = true;
+        break;
+      case "--aggregate-artifacts":
+        args.aggregateArtifacts = true;
+        break;
+      case "--ignore-path":
+        args.ignorePaths!.push(val());
         break;
       default:
         throw new Error(`unknown flag: ${flag}`);

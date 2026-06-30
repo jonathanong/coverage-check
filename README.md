@@ -191,6 +191,24 @@ coverage-check check \
 
 `--require-artifact` is also accepted by `coverage-check merge`.
 
+### Preparing fan-in artifacts
+
+Use `prepare-artifacts` before a fan-in coverage check when downloaded artifacts may be either
+nested as `coverage-<suite>/lcov.info` or flattened to a root-level `lcov.info`. Pass one
+`--expect-suite <job>=<suite>` for each successful coverage producer. The command normalizes a
+single flat LCOV into the expected suite directory and fails if any expected LCOV is missing:
+
+```sh
+coverage-check prepare-artifacts \
+  --artifacts ./coverage-artifacts \
+  --expect-suite test-backend=backend \
+  --expect-suite test-web=web
+```
+
+For local or fan-in wrappers, `check --aggregate-artifacts` treats all fresh LCOV files as one source
+for diagnostics, `check --fail-on-empty` exits `1` instead of skipping when no LCOV exists, and
+`check --ignore-path <glob>` prepends a zero-threshold override for CI-only paths in that run.
+
 ## Rules file
 
 ```yaml
@@ -256,6 +274,9 @@ First-match-wins means that if you have a more specific rule before a broader on
 | `--advisory`                | —                      | Exit `0` even on shortfall; still prints, writes JSON, and posts PR comment                                |
 | `--drop-only-changed-areas` | —                      | Restrict `no_coverage_drop` to rule areas that have ≥1 changed file; others are reported as skipped        |
 | `--require-artifact`        | —                      | Fail (exit `2`) if this relative path is absent under `--artifacts` (repeatable)                           |
+| `--fail-on-empty`           | —                      | Exit `1` when no coverage data is found instead of skipping                                                |
+| `--aggregate-artifacts`     | —                      | Treat fresh LCOV files as one source for diagnostics and summaries                                         |
+| `--ignore-path`             | —                      | Prepend a zero-threshold override glob for this run (repeatable)                                           |
 
 ### `coverage-check merge`
 
@@ -267,6 +288,13 @@ First-match-wins means that if you have a more specific rule before a broader on
 | `--require-artifact` | —                      | Fail (exit `2`) if this relative path is absent (repeatable)  |
 
 Hit counts are summed across all inputs. Function (`FN`/`FNDA`) and branch (`BRDA`) records are preserved; summary counters (`LF/LH/FNF/FNH/BRF/BRH`) are recomputed from the merged data.
+
+### `coverage-check prepare-artifacts`
+
+| Flag             | Default                | Description                                    |
+| ---------------- | ---------------------- | ---------------------------------------------- |
+| `--artifacts`    | `./coverage-artifacts` | Coverage artifact directory to normalize/check |
+| `--expect-suite` | —                      | Expected producer and suite as `<job>=<suite>` |
 
 ### `coverage-check store-put`
 
@@ -289,10 +317,14 @@ When `--sha` and `--branch` are both provided, `store-put` writes a SHA-addresse
 
 ```ts
 import {
+  evaluateCheck,
   runCheck,
   runMerge,
   runStorePut,
+  prepareCoverageArtifacts,
   collapseRanges,
+  collectLcovFiles,
+  zeroThresholdGlobs,
   parseLcovFull,
   mergeLcovFull,
   toLcovFull,
@@ -321,7 +353,34 @@ await runCheck({
   advisory: false,
   dropOnlyChangedAreas: false,
   requireArtifacts: [],
+  failOnEmpty: false,
+  aggregateArtifacts: false,
+  ignorePaths: [],
 });
+
+const evaluated = await evaluateCheck({
+  rules: ".coverage-rules.yml",
+  artifacts: "./coverage",
+  base: "origin/main",
+  head: "HEAD",
+  pr: null,
+  repo: "",
+  json: null,
+  stripPrefixes: [],
+  store: null,
+  suite: null,
+});
+if (evaluated.result?.passed === false) {
+  // Integrations can render their own advisory output from the typed result.
+}
+
+prepareCoverageArtifacts({
+  artifacts: "./coverage-artifacts",
+  expectedSuites: [{ job: "test-backend", suite: "backend" }],
+});
+
+collectLcovFiles("./coverage-artifacts");
+zeroThresholdGlobs(".coverage-rules.yml");
 
 await runMerge({
   artifacts: "./coverage-artifacts",

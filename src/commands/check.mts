@@ -1,9 +1,10 @@
+// oxlint-disable max-lines -- check evaluation and CLI rendering share one pipeline
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov } from "../lcov-merge.mts";
 import { getChangedLines } from "../diff-parser.mts";
 import { getChangedLineContent } from "../diff-parser-content.mts";
-import { loadRules, buildChangedRules } from "../rules.mts";
+import { loadRules, buildChangedRules, withIgnoredPaths } from "../rules.mts";
 import { computePatchCoverage } from "../patch-coverage.mts";
 import { computeCoverageDrop } from "../coverage-drop.mts";
 import { collapseRanges, renderFailureComment } from "../report.mts";
@@ -11,14 +12,32 @@ import { upsertComment } from "../github-comment.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { writeSummary } from "../step-summary.mts";
 import { parseCheckArgs } from "./check-args.mts";
-import { warnNonContributing, printDropOutput, checkRequiredArtifacts } from "./check-output.mts";
+import {
+  missingRequiredArtifacts,
+  nonContributingWarnings,
+  printDropOutput,
+  checkRequiredArtifacts,
+} from "./check-output.mts";
 import type { CheckArgs } from "./check-args.mts";
 import type { SuiteSource } from "../step-summary.mts";
 import type { DiffLineContent, LcovData } from "../types.mts";
+import type { CoverageCheckResult } from "../types.mts";
 export type { CheckArgs } from "./check-args.mts";
 
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
+
+export type EvaluatedCheck = {
+  exitCode: number;
+  result: CoverageCheckResult | null;
+  suiteSources: SuiteSource[];
+  runUrl: string;
+  branch: string;
+  diffContent: DiffLineContent | null;
+  skippedReason?: string;
+  parsedSources: { name: string; lcov: LcovData }[];
+  warnings: string[];
+};
 
 export async function main(argv: string[]): Promise<number> {
   let args: CheckArgs;
@@ -31,18 +50,35 @@ export async function main(argv: string[]): Promise<number> {
   return runCheck(args);
 }
 
-export async function runCheck(args: CheckArgs): Promise<number> {
+export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
+  const branch = args.branch ?? "main";
+  const runUrl =
+    process.env["GITHUB_SERVER_URL"] && process.env["GITHUB_RUN_ID"]
+      ? `${process.env["GITHUB_SERVER_URL"]}/${args.repo}/actions/runs/${process.env["GITHUB_RUN_ID"]}`
+      : "N/A";
+  const emptyResult = (exitCode: number, skippedReason: string): EvaluatedCheck => ({
+    exitCode,
+    result: null,
+    suiteSources: [],
+    runUrl,
+    branch,
+    diffContent: null,
+    skippedReason,
+    parsedSources: [],
+    warnings: [],
+  });
+
   let rules;
   try {
-    rules = loadRules(args.rules);
+    rules = withIgnoredPaths(loadRules(args.rules), args.ignorePaths);
   } catch (err) {
-    stderr(`coverage-check: failed to load rules: ${err}`);
-    return 2;
+    return emptyResult(2, `failed to load rules: ${err}`);
   }
 
-  if (!checkRequiredArtifacts(args.artifacts, args.requireArtifacts ?? [])) return 2;
+  if (missingRequiredArtifacts(args.artifacts, args.requireArtifacts ?? []).length > 0) {
+    return emptyResult(2, "missing required coverage artifact");
+  }
 
-  const branch = args.branch ?? "main";
   const stripPrefixes = buildStripPrefixes(args.stripPrefixes);
   const reports: LcovData[] = [];
   const suiteSources: SuiteSource[] = [];
@@ -66,21 +102,35 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   const freshLcovs: LcovData[] = [];
   for (const f of lcovFiles) {
     const lcov = parseLcov(readFileSync(f, "utf8"), stripPrefixes);
-    reports.push(lcov);
     freshLcovs.push(lcov);
-    parsedSources.push({ name: `file '${f}'`, lcov });
+    if (!(args.aggregateArtifacts ?? false)) {
+      reports.push(lcov);
+      parsedSources.push({ name: `file '${f}'`, lcov });
+    }
   }
   if (freshLcovs.length > 0) {
+    const freshMerged = mergeLcov(freshLcovs);
+    if (args.aggregateArtifacts ?? false) {
+      reports.push(freshMerged);
+      parsedSources.push({
+        name: `aggregated artifacts under '${args.artifacts}'`,
+        lcov: freshMerged,
+      });
+    }
     suiteSources.push({
       suite: args.suite ?? "(current)",
       source: "fresh",
-      lcov: mergeLcov(freshLcovs),
+      lcov: freshMerged,
     });
   }
 
   if (reports.length === 0) {
-    stderr(`coverage-check: no coverage data found — skipping`);
-    return 0;
+    return emptyResult(
+      args.failOnEmpty ? 1 : 0,
+      args.failOnEmpty
+        ? `no coverage data found under ${args.artifacts}`
+        : "no coverage data found — skipping",
+    );
   }
 
   const lcov = mergeLcov(reports);
@@ -97,11 +147,20 @@ export async function runCheck(args: CheckArgs): Promise<number> {
       diff = await getChangedLines(args.base, args.head);
     }
   } catch (err) {
-    stderr(`coverage-check: git diff failed: ${err}`);
-    return 2;
+    return {
+      exitCode: 2,
+      result: null,
+      suiteSources,
+      runUrl,
+      branch,
+      diffContent: null,
+      skippedReason: `git diff failed: ${err}`,
+      parsedSources,
+      warnings: [],
+    };
   }
 
-  warnNonContributing(parsedSources, diff);
+  const warnings = nonContributingWarnings(parsedSources, diff);
 
   let baseline: LcovData | null = null;
   if (args.store !== null) {
@@ -130,18 +189,44 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   const passed = buckets.every((b) => b.passed) && drops.every((d) => d.passed || d.skipped);
   const result = { buckets, drops, informational, passed };
 
+  return {
+    exitCode: (args.advisory ?? false) || passed ? 0 : 1,
+    result,
+    suiteSources,
+    runUrl,
+    branch,
+    diffContent,
+    parsedSources,
+    warnings,
+  };
+}
+
+export async function runCheck(args: CheckArgs): Promise<number> {
+  const evaluated = await evaluateCheck(args);
+
+  if (evaluated.result === null) {
+    if (evaluated.skippedReason) {
+      if (evaluated.skippedReason === "missing required coverage artifact") {
+        checkRequiredArtifacts(args.artifacts, args.requireArtifacts ?? []);
+        return evaluated.exitCode;
+      }
+      stderr(`coverage-check: ${evaluated.skippedReason}`);
+    }
+    return evaluated.exitCode;
+  }
+
+  for (const warning of evaluated.warnings) stderr(warning);
+  const result = evaluated.result;
+  const diffContent = evaluated.diffContent;
+  const passed = result.passed;
+
   if (args.json) {
     writeFileSync(args.json, JSON.stringify(result, null, 2));
   }
 
-  const runUrl =
-    process.env["GITHUB_SERVER_URL"] && process.env["GITHUB_RUN_ID"]
-      ? `${process.env["GITHUB_SERVER_URL"]}/${args.repo}/actions/runs/${process.env["GITHUB_RUN_ID"]}`
-      : "N/A";
-
   if (!passed) {
     stdout("\ncoverage-check: FAILED\n");
-    for (const bucket of buckets.filter((b) => !b.passed)) {
+    for (const bucket of result.buckets.filter((b) => !b.passed)) {
       /* c8 ignore next -- bucket.coverable is always > 0 by patch-coverage.mts L36 guard */
       const pct =
         bucket.coverable > 0 ? `${((bucket.hit / bucket.coverable) * 100).toFixed(1)}%` : "—";
@@ -163,7 +248,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     }
   } else {
     stdout("\ncoverage-check: PASSED\n");
-    for (const bucket of buckets) {
+    for (const bucket of result.buckets) {
       /* c8 ignore next -- bucket.coverable is always > 0 by patch-coverage.mts L36 guard */
       const pct =
         bucket.coverable > 0 ? `${((bucket.hit / bucket.coverable) * 100).toFixed(1)}%` : "—";
@@ -171,7 +256,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     }
   }
 
-  printDropOutput(drops);
+  printDropOutput(result.drops);
 
   const summaryFile =
     args.summaryFile !== undefined
@@ -179,7 +264,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
       : (process.env["GITHUB_STEP_SUMMARY"] ?? null);
   if (summaryFile) {
     try {
-      writeSummary(summaryFile, suiteSources, result, runUrl, branch);
+      writeSummary(summaryFile, evaluated.suiteSources, result, evaluated.runUrl, evaluated.branch);
     } catch (err) {
       stderr(`coverage-check: failed to write step summary: ${err}`);
       return 2;
@@ -187,7 +272,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   }
 
   if (args.pr !== null && args.repo) {
-    const body = passed ? "" : renderFailureComment(result, runUrl);
+    const body = passed ? "" : renderFailureComment(result, evaluated.runUrl);
     try {
       await upsertComment(body, args.repo, args.pr, passed, args.gh);
     } catch (err) {
@@ -195,5 +280,5 @@ export async function runCheck(args: CheckArgs): Promise<number> {
     }
   }
 
-  return (args.advisory ?? false) || passed ? 0 : 1;
+  return evaluated.exitCode;
 }

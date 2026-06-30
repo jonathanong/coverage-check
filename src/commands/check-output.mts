@@ -31,28 +31,39 @@ function lcovContributesToDiff(sourceLcov: LcovData, diff: DiffLines): boolean {
  * Prints `::error::` to stderr for each missing file and returns false if any are absent.
  */
 export function checkRequiredArtifacts(artifactsDir: string, requireArtifacts: string[]): boolean {
-  let ok = true;
-  for (const rel of requireArtifacts) {
-    if (!existsSync(join(artifactsDir, rel))) {
-      stderr(`::error:: missing expected coverage artifact: ${rel}`);
-      ok = false;
-    }
-  }
-  return ok;
+  const missing = missingRequiredArtifacts(artifactsDir, requireArtifacts);
+  for (const rel of missing) stderr(`::error:: missing expected coverage artifact: ${rel}`);
+  return missing.length === 0;
+}
+
+export function missingRequiredArtifacts(
+  artifactsDir: string,
+  requireArtifacts: string[],
+): string[] {
+  return requireArtifacts.filter((rel) => !existsSync(join(artifactsDir, rel)));
 }
 
 export function warnNonContributing(
   parsedSources: { name: string; lcov: LcovData }[],
   diff: DiffLines,
 ): void {
-  if (diff.size === 0) return;
+  for (const warning of nonContributingWarnings(parsedSources, diff)) stderr(warning);
+}
+
+export function nonContributingWarnings(
+  parsedSources: { name: string; lcov: LcovData }[],
+  diff: DiffLines,
+): string[] {
+  if (diff.size === 0) return [];
+  const warnings: string[] = [];
   for (const { name, lcov: sourceLcov } of parsedSources) {
     if (!lcovContributesToDiff(sourceLcov, diff)) {
-      stderr(
+      warnings.push(
         `coverage-check: warning: coverage from ${name} contributed 0 coverable lines to the patch result. This may indicate a path prefix mismatch.`,
       );
     }
   }
+  return warnings;
 }
 
 export function printDropOutput(drops: DropResult[]): void {

@@ -56,6 +56,10 @@ describe("cli subcommand dispatch", () => {
     ).toBe(0);
   });
 
+  it("prepare-artifacts subcommand returns 0 with no expected suites", async () => {
+    expect(await main(["prepare-artifacts", "--artifacts", artifactsDir])).toBe(0);
+  });
+
   it("merge subcommand returns 1 with no lcov files", async () => {
     const outputPath = join(tmpDir, "merged", "lcov.info");
     expect(
