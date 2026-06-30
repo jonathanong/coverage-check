@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseCheckArgs } from "./check-args.mts";
 import { main, runCheck } from "./check.mts";
 import { FileSystemSuiteStore } from "../suite-store.mts";
 
@@ -40,6 +41,46 @@ describe("main argument validation", () => {
     delete process.env["GITHUB_REPOSITORY"];
     try {
       expect(await main(["--pr", "42"])).toBe(2);
+    } finally {
+      if (saved !== undefined) process.env["GITHUB_REPOSITORY"] = saved;
+      else delete process.env["GITHUB_REPOSITORY"];
+    }
+  });
+
+  it("returns exit code 2 when --pr is set and repo format is invalid", async () => {
+    const saved = process.env["GITHUB_REPOSITORY"];
+    delete process.env["GITHUB_REPOSITORY"];
+    try {
+      expect(await main(["--pr", "42", "--repo", "-invalid/repo"])).toBe(2);
+      expect(await main(["--pr", "42", "--repo", "owner-without-slash-repo"])).toBe(2);
+      expect(await main(["--pr", "42", "--repo", "owner/."])).toBe(2);
+      expect(await main(["--pr", "42", "--repo", "owner/.."])).toBe(2);
+    } finally {
+      if (saved !== undefined) process.env["GITHUB_REPOSITORY"] = saved;
+      else delete process.env["GITHUB_REPOSITORY"];
+    }
+  });
+
+  it("trims repository input before validation", async () => {
+    expect(
+      await main([
+        "--rules",
+        "/tmp/does-not-exist.yml",
+        "--artifacts",
+        "/tmp",
+        "--pr",
+        "42",
+        "--repo",
+        " owner/repo ",
+      ]),
+    ).toBe(2);
+  });
+
+  it("allows an empty repo when no PR is being commented", () => {
+    const saved = process.env["GITHUB_REPOSITORY"];
+    delete process.env["GITHUB_REPOSITORY"];
+    try {
+      expect(parseCheckArgs([]).repo).toBe("");
     } finally {
       if (saved !== undefined) process.env["GITHUB_REPOSITORY"] = saved;
       else delete process.env["GITHUB_REPOSITORY"];
@@ -96,6 +137,21 @@ describe("main integration", () => {
         "42",
         "--repo",
         "owner/repo",
+        "--artifacts",
+        artifactsDir,
+      ]),
+    ).toBe(2);
+  });
+
+  it("accepts repo names with leading hyphen in the repository segment", async () => {
+    expect(
+      await main([
+        "--rules",
+        join(tmpDir, "nonexistent.yml"),
+        "--pr",
+        "42",
+        "--repo",
+        "owner/-repo",
         "--artifacts",
         artifactsDir,
       ]),

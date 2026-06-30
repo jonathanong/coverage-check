@@ -1,4 +1,5 @@
 import { COMMENT_MARKER } from "./report.mts";
+import { assertValidRepo } from "./suite-store.mts";
 
 export type GhRunner = (args: string[]) => Promise<string>;
 
@@ -55,25 +56,27 @@ export async function upsertComment(
   passed: boolean,
   gh: GhRunner = defaultGhRunner,
 ): Promise<void> {
-  const existingId = await findExistingComment(repo, pr, gh);
+  const normalizedRepo = assertValidRepo(repo);
+
+  const existingId = await findExistingComment(normalizedRepo, pr, gh);
 
   if (passed && existingId === null) return;
 
   if (passed && existingId !== null) {
-    await gh(["api", `repos/${repo}/issues/comments/${existingId}`, "-X", "DELETE"]);
+    await gh(["api", `repos/${normalizedRepo}/issues/comments/${existingId}`, "-X", "DELETE"]);
     return;
   }
 
   if (existingId !== null) {
     await gh([
       "api",
-      `repos/${repo}/issues/comments/${existingId}`,
+      `repos/${normalizedRepo}/issues/comments/${existingId}`,
       "-X",
       "PATCH",
       "-f",
       `body=${body}`,
     ]);
   } else {
-    await gh(["api", `repos/${repo}/issues/${pr}/comments`, "-f", `body=${body}`]);
+    await gh(["api", `repos/${normalizedRepo}/issues/${pr}/comments`, "-f", `body=${body}`]);
   }
 }
