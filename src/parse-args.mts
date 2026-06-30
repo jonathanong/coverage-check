@@ -12,13 +12,12 @@ export function parseArgs<T extends Record<string, unknown>>(
       options,
       strict: true,
     }).values as T;
-  } catch (error) {
-    throw new Error(formatParseArgsError(error));
+  } catch (error: unknown) {
+    throw new Error(formatParseArgsError(error as Error));
   }
 }
 
-function formatParseArgsError(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
+function formatParseArgsError(error: Error): string {
   const unknown = error.message.match(/^Unknown option '([^']+)'$/);
   if (unknown) return `unknown flag: ${unknown[1]}`;
   const missing = error.message.match(/^Option '([^' ]+)(?: <value>)?' argument missing$/);
