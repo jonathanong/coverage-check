@@ -284,10 +284,52 @@ describe("main integration", () => {
     expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir])).toBe(0);
   });
 
+  it("writes skipped JSON when no coverage data is found", async () => {
+    const jsonPath = join(tmpDir, "no-coverage-result.json");
+
+    expect(
+      await main(["--rules", rulesPath, "--artifacts", artifactsDir, "--json", jsonPath]),
+    ).toBe(0);
+
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result).toEqual({
+      buckets: [],
+      drops: [],
+      informational: [],
+      passed: true,
+      exitCode: 0,
+      advisory: false,
+      skipped: true,
+    });
+  });
+
   it("returns 1 when --fail-on-empty is set and no coverage data is found", async () => {
     expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir, "--fail-on-empty"])).toBe(
       1,
     );
+  });
+
+  it("writes error JSON when --fail-on-empty finds no coverage data", async () => {
+    const jsonPath = join(tmpDir, "fail-on-empty-result.json");
+
+    expect(
+      await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--fail-on-empty",
+        "--json",
+        jsonPath,
+      ]),
+    ).toBe(1);
+
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result.passed).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(result.advisory).toBe(false);
+    expect(result.skipped).toBe(false);
+    expect(result.error).toContain("no coverage data found under");
   });
 
   it("returns 2 when a required artifact is missing", async () => {
