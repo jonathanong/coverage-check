@@ -52,10 +52,27 @@ describe("main argument validation", () => {
     try {
       expect(await main(["--pr", "42", "--repo", "-invalid/repo"])).toBe(2);
       expect(await main(["--pr", "42", "--repo", "owner-without-slash-repo"])).toBe(2);
+      expect(await main(["--pr", "42", "--repo", "owner/."])).toBe(2);
+      expect(await main(["--pr", "42", "--repo", "owner/.."])).toBe(2);
     } finally {
       if (saved !== undefined) process.env["GITHUB_REPOSITORY"] = saved;
       else delete process.env["GITHUB_REPOSITORY"];
     }
+  });
+
+  it("trims repository input before validation", async () => {
+    expect(
+      await main([
+        "--rules",
+        "/tmp/does-not-exist.yml",
+        "--artifacts",
+        "/tmp",
+        "--pr",
+        "42",
+        "--repo",
+        " owner/repo ",
+      ]),
+    ).toBe(2);
   });
 
   it("uses fallback defaults when GITHUB_REPOSITORY/REF_NAME/STEP_SUMMARY are unset", async () => {
@@ -108,6 +125,21 @@ describe("main integration", () => {
         "42",
         "--repo",
         "owner/repo",
+        "--artifacts",
+        artifactsDir,
+      ]),
+    ).toBe(2);
+  });
+
+  it("accepts repo names with leading hyphen in the repository segment", async () => {
+    expect(
+      await main([
+        "--rules",
+        join(tmpDir, "nonexistent.yml"),
+        "--pr",
+        "42",
+        "--repo",
+        "owner/-repo",
         "--artifacts",
         artifactsDir,
       ]),

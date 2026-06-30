@@ -1,4 +1,5 @@
 import { COMMENT_MARKER } from "./report.mts";
+import { assertValidRepo } from "./suite-store.mts";
 
 export type GhRunner = (args: string[]) => Promise<string>;
 
@@ -20,7 +21,11 @@ async function defaultGhRunner(args: string[]): Promise<string> {
 /* c8 ignore stop */
 
 /** Finds the ID of the existing coverage-check sticky comment, if any. */
-async function findExistingComment(repo: string, pr: number, gh: GhRunner): Promise<number | null> {
+async function findExistingComment(
+  repo: string,
+  pr: number,
+  gh: GhRunner,
+): Promise<number | null> {
   try {
     const raw = await gh([
       "api",
@@ -55,29 +60,27 @@ export async function upsertComment(
   passed: boolean,
   gh: GhRunner = defaultGhRunner,
 ): Promise<void> {
-  if (!/^[A-Za-z0-9_.][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/.test(repo)) {
-    throw new Error(`Invalid repository format: ${repo}. Expected owner/repo.`);
-  }
+  const normalizedRepo = assertValidRepo(repo);
 
-  const existingId = await findExistingComment(repo, pr, gh);
+  const existingId = await findExistingComment(normalizedRepo, pr, gh);
 
   if (passed && existingId === null) return;
 
   if (passed && existingId !== null) {
-    await gh(["api", `repos/${repo}/issues/comments/${existingId}`, "-X", "DELETE"]);
+    await gh(["api", `repos/${normalizedRepo}/issues/comments/${existingId}`, "-X", "DELETE"]);
     return;
   }
 
   if (existingId !== null) {
     await gh([
       "api",
-      `repos/${repo}/issues/comments/${existingId}`,
+      `repos/${normalizedRepo}/issues/comments/${existingId}`,
       "-X",
       "PATCH",
       "-f",
       `body=${body}`,
     ]);
   } else {
-    await gh(["api", `repos/${repo}/issues/${pr}/comments`, "-f", `body=${body}`]);
+    await gh(["api", `repos/${normalizedRepo}/issues/${pr}/comments`, "-f", `body=${body}`]);
   }
 }

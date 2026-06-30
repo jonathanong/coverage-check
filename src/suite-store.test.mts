@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   assertSafePathComponent,
+  assertValidRepo,
   decodeBranchName,
   encodeBranchName,
   FileSystemSuiteStore,
@@ -313,6 +314,25 @@ describe("assertSafePathComponent", () => {
   it("rejects non-string values at runtime (e.g. from JSON.parse)", () => {
     expect(() => assertSafePathComponent(123 as unknown as string, "sha")).toThrow("invalid sha");
     expect(() => assertSafePathComponent(null as unknown as string, "sha")).toThrow("invalid sha");
+  });
+});
+
+describe("assertValidRepo", () => {
+  it("accepts valid repository strings", () => {
+    expect(assertValidRepo("owner/repo")).toBe("owner/repo");
+    expect(assertValidRepo("owner/-repo")).toBe("owner/-repo");
+    expect(assertValidRepo("owner/repo-name")).toBe("owner/repo-name");
+  });
+
+  it("trims repository strings before validation", () => {
+    expect(assertValidRepo(" owner/repo ")).toBe("owner/repo");
+  });
+
+  it("rejects invalid repository strings", () => {
+    expect(() => assertValidRepo("-invalid/repo")).toThrow("Invalid repository format");
+    expect(() => assertValidRepo("owner-without-slash-repo")).toThrow("Invalid repository format");
+    expect(() => assertValidRepo("owner/.")).toThrow("Invalid repository format");
+    expect(() => assertValidRepo("owner/..")).toThrow("Invalid repository format");
   });
 });
 

@@ -10,5 +10,5 @@
 
 ## 2026-06-10 - [Strict validation for GitHub repository inputs]
 **Vulnerability:** Path traversal, SSRF, or command injection via unsanitized repository strings (e.g., `--repo`).
-**Learning:** Inputs passed to API endpoint paths or child processes (like the `gh` CLI) must not start with hyphens and should strictly conform to expected formats. Even if shell injection is avoided, an unvalidated string could alter API paths (`repos/../something_else/issues...`) or inject arguments.
-**Prevention:** Strictly validate repository names using a regex like `^[A-Za-z0-9_.][A-Za-z0-9_.-]*/[A-Za-z0-9_.][A-Za-z0-9_.-]*$` to enforce the `owner/repo` structure and block leading hyphens.
+**Learning:** Inputs passed to API endpoint paths or child-process arguments (like the `gh` CLI) can alter request targets if allowed to contain unsafe values such as dot segments or extra separators outside the required `owner/repo` shape.
+**Prevention:** Centralize repository validation in one helper (`assertValidRepo`), trim inputs once, and require a strict `owner/repo` form with strict owner/repo character sets (`owner`: `[A-Za-z0-9_][A-Za-z0-9_.-]*`, `repo`: `[A-Za-z0-9_.-]+`) while rejecting `.` and `..`.

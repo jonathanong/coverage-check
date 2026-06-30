@@ -15,6 +15,34 @@ export function assertSafePathComponent(value: string, label: string): void {
   }
 }
 
+export function assertValidRepo(repo: string): string {
+  if (typeof repo !== "string") {
+    throw new Error(`Invalid repository format: ${repo}. Expected owner/repo.`);
+  }
+
+  const trimmed = repo.trim();
+  if (trimmed.length === 0) {
+    throw new Error(`Invalid repository format: ${repo}. Expected owner/repo.`);
+  }
+
+  const parts = trimmed.split("/");
+  if (parts.length !== 2) {
+    throw new Error(`Invalid repository format: ${repo}. Expected owner/repo.`);
+  }
+
+  const [owner, name] = parts;
+  if (
+    !/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(owner) ||
+    !/^[A-Za-z0-9_.-]+$/.test(name) ||
+    name === "." ||
+    name === ".."
+  ) {
+    throw new Error(`Invalid repository format: ${repo}. Expected owner/repo.`);
+  }
+
+  return trimmed;
+}
+
 export type { SuiteMeta };
 
 export type SuitePutMeta = { sha: string; branch: string; timestamp?: string };
