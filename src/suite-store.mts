@@ -20,7 +20,13 @@ export type { SuiteMeta };
 export type SuitePutMeta = { sha: string; branch: string; timestamp?: string };
 
 export function encodeBranchName(branch: string): string {
-  if (typeof branch !== "string" || branch.length === 0) {
+  if (
+    typeof branch !== "string" ||
+    branch.length === 0 ||
+    branch === "." ||
+    branch.includes("..") ||
+    branch.includes("\\")
+  ) {
     throw new Error(`invalid branch: ${JSON.stringify(branch)}`);
   }
   return Buffer.from(branch, "utf8").toString("base64url");
@@ -111,11 +117,12 @@ export class FileSystemSuiteStore implements SuiteStore {
     }
     const { sha, branch } = meta;
     assertSafePathComponent(sha, "sha");
+    const encodedBranch = encodeBranchName(branch);
     const shaDir = join(this.root, suite, "sha", sha);
     mkdirSync(shaDir, { recursive: true });
     writeFileSync(join(shaDir, "lcov.info"), lcov);
 
-    const branchDir = join(this.root, suite, "branch", encodeBranchName(branch));
+    const branchDir = join(this.root, suite, "branch", encodedBranch);
     mkdirSync(branchDir, { recursive: true });
     const pointerPath = join(branchDir, "latest.json");
     const timestamp = meta.timestamp ?? new Date().toISOString();

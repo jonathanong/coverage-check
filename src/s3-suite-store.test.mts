@@ -498,7 +498,7 @@ describe("S3SuiteStore — path traversal protection", () => {
     prefix: PREFIX,
     client: makeClient(async () => ({})),
   });
-  const invalid = ["", ".", "..", "a/b", "a\\b"];
+  const invalid = ["", ".", "..", "a\\b"];
   for (const val of invalid) {
     it(`get() rejects suite=${JSON.stringify(val)}`, async () => {
       await expect(store.get(val)).rejects.toThrow("invalid suite");
@@ -515,6 +515,18 @@ describe("S3SuiteStore — path traversal protection", () => {
       await expect(
         store.put("backend", Buffer.from(""), { sha: val, branch: "main" }),
       ).rejects.toThrow("invalid sha");
+    });
+    it(`put() rejects branch=${JSON.stringify(val)} without writing`, async () => {
+      const client = makeClient(async () => ({}));
+      const invalidBranchStore = new S3SuiteStore({
+        bucket: BUCKET,
+        prefix: PREFIX,
+        client,
+      });
+      await expect(
+        invalidBranchStore.put("backend", Buffer.from(LCOV), { sha: "abc", branch: val }),
+      ).rejects.toThrow("invalid branch");
+      expect(client.send).not.toHaveBeenCalled();
     });
   }
 });

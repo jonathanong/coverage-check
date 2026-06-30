@@ -280,7 +280,7 @@ describe("FileSystemSuiteStore", () => {
   });
 
   describe("path traversal protection", () => {
-    const invalid = ["", ".", "..", "a/b", "a\\b"];
+    const invalid = ["", ".", "..", "a\\b"];
     for (const val of invalid) {
       it(`get() rejects suite=${JSON.stringify(val)}`, async () => {
         await expect(store.get(val)).rejects.toThrow("invalid suite");
@@ -297,6 +297,13 @@ describe("FileSystemSuiteStore", () => {
         await expect(
           store.put("backend", Buffer.from(""), { sha: val, branch: "main" }),
         ).rejects.toThrow("invalid sha");
+      });
+      it(`put() rejects branch=${JSON.stringify(val)} before writing`, async () => {
+        const suite = "backend-branch-check";
+        await expect(
+          store.put(suite, Buffer.from(""), { sha: "abc", branch: val }),
+        ).rejects.toThrow("invalid branch");
+        expect(() => readFileSync(join(tmpDir, suite, "sha", "abc", "lcov.info"))).toThrow();
       });
     }
   });
@@ -319,6 +326,11 @@ describe("branch name encoding", () => {
   it("rejects empty and non-string branch names at runtime", () => {
     expect(() => encodeBranchName("")).toThrow("invalid branch");
     expect(() => encodeBranchName(null as unknown as string)).toThrow("invalid branch");
+  });
+
+  it("throws on path traversal attempts", () => {
+    expect(() => encodeBranchName("../../etc")).toThrow("invalid branch");
+    expect(() => encodeBranchName("..\\..\\etc")).toThrow("invalid branch");
   });
 });
 

@@ -38,10 +38,10 @@ export async function getLegacy(ctx: ReadContext, suite: string): Promise<Buffer
 export async function shouldWritePointer(
   ctx: ReadContext,
   suite: string,
-  branch: string,
+  encodedBranch: string,
   incomingTimestamp: string,
 ): Promise<boolean> {
-  const key = ctx.key(suite, "branch", encodeBranchName(branch), "latest.json");
+  const key = ctx.key(suite, "branch", encodedBranch, "latest.json");
   try {
     const resp = (await ctx.sendS3(
       "get branch pointer for compare",
