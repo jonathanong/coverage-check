@@ -12,7 +12,6 @@ export type S3SuiteStoreOptions = {
   bucket: string;
   prefix?: string;
   region?: string;
-  /** Inject a custom S3 client (e.g. for testing). */
   client?: ClientLike;
 };
 
