@@ -162,6 +162,22 @@ coverage-check check \
   --advisory
 ```
 
+For wrappers that need machine-readable advisory results without a temp file, pass `--json -`.
+This writes JSON-only output to stdout and suppresses the human report:
+
+```sh
+coverage-check check \
+  --rules .coverage-rules.yml \
+  --artifacts ./coverage-artifacts \
+  --base origin/main \
+  --head HEAD \
+  --advisory \
+  --json -
+```
+
+JSON output keeps the normal check result fields (`passed`, `buckets`, `drops`, `informational`) and
+adds `exitCode`, `advisory`, and `skipped`.
+
 ### PR-scoped regression gate
 
 By default, `no_coverage_drop` applies to every rule area regardless of what changed. Pass `--drop-only-changed-areas` to restrict the drop gate to rule areas that contain at least one changed file in the PR diff. Areas with no changed files are reported as `skipped` — they pass non-blockingly:
@@ -253,6 +269,8 @@ First-match-wins means that if you have a more specific rule before a broader on
 
 ## CLI reference
 
+Run `coverage-check --help` or `coverage-check check --help` to print the available commands and check flags.
+
 ### `coverage-check check`
 
 | Flag                        | Default                | Description                                                                                                |
@@ -269,7 +287,7 @@ First-match-wins means that if you have a more specific rule before a broader on
 | `--strip-prefix`            | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                                              |
 | `--pr`                      | —                      | Pull request number for sticky comment                                                                     |
 | `--repo`                    | `$GITHUB_REPOSITORY`   | `owner/repo` for sticky comment                                                                            |
-| `--json`                    | —                      | Write JSON result to this path                                                                             |
+| `--json`                    | —                      | Write JSON result to this path; use `-` for JSON-only stdout                                               |
 | `--annotate-source`         | —                      | Print the trimmed source text of each uncovered line in stdout (does not alter PR comment or step summary) |
 | `--advisory`                | —                      | Exit `0` even on shortfall; still prints, writes JSON, and posts PR comment                                |
 | `--drop-only-changed-areas` | —                      | Restrict `no_coverage_drop` to rule areas that have ≥1 changed file; others are reported as skipped        |
@@ -317,6 +335,7 @@ When `--sha` and `--branch` are both provided, `store-put` writes a SHA-addresse
 
 ```ts
 import {
+  checkCoverage,
   evaluateCheck,
   runCheck,
   runMerge,
@@ -337,6 +356,27 @@ const fsStore = new FileSystemSuiteStore("/path/to/store");
 
 // S3 store (requires AWS credentials — see https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/setting-credentials-node.html)
 const s3Store = new S3SuiteStore({ bucket: "my-bucket", prefix: "coverage" });
+
+const check = await checkCoverage({
+  rules: ".coverage-rules.yml",
+  artifacts: "./coverage",
+  base: "origin/main",
+  head: "HEAD",
+  pr: null,
+  repo: "",
+  json: null,
+  stripPrefixes: [],
+  store: s3Store,
+  suite: "backend",
+  branch: "main",
+  advisory: true,
+  dropOnlyChangedAreas: false,
+  requireArtifacts: [],
+});
+
+if (!check.result?.passed) {
+  console.log(check.exitCode, check.advisory, check.result);
+}
 
 await runCheck({
   rules: ".coverage-rules.yml",

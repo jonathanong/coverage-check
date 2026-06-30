@@ -4,10 +4,23 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseCheckArgs } from "./check-args.mts";
-import { evaluateCheck, main, runCheck } from "./check.mts";
+import { checkCoverage, evaluateCheck, main, runCheck } from "./check.mts";
 import { FileSystemSuiteStore } from "../suite-store.mts";
 
 describe("main argument validation", () => {
+  it("returns 0 and prints help for --help", async () => {
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      expect(await main(["--help"])).toBe(0);
+      const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(output).toContain("coverage-check check");
+      expect(output).toContain("--advisory");
+      expect(output).toContain("--json <path|->");
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
   it("returns exit code 2 on unknown flags", async () => {
     expect(await main(["--unknown-flag"])).toBe(2);
   });
@@ -271,10 +284,52 @@ describe("main integration", () => {
     expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir])).toBe(0);
   });
 
+  it("writes skipped JSON when no coverage data is found", async () => {
+    const jsonPath = join(tmpDir, "no-coverage-result.json");
+
+    expect(
+      await main(["--rules", rulesPath, "--artifacts", artifactsDir, "--json", jsonPath]),
+    ).toBe(0);
+
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result).toEqual({
+      buckets: [],
+      drops: [],
+      informational: [],
+      passed: true,
+      exitCode: 0,
+      advisory: false,
+      skipped: true,
+    });
+  });
+
   it("returns 1 when --fail-on-empty is set and no coverage data is found", async () => {
     expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir, "--fail-on-empty"])).toBe(
       1,
     );
+  });
+
+  it("writes error JSON when --fail-on-empty finds no coverage data", async () => {
+    const jsonPath = join(tmpDir, "fail-on-empty-result.json");
+
+    expect(
+      await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--fail-on-empty",
+        "--json",
+        jsonPath,
+      ]),
+    ).toBe(1);
+
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result.passed).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(result.advisory).toBe(false);
+    expect(result.skipped).toBe(false);
+    expect(result.error).toContain("no coverage data found under");
   });
 
   it("returns 2 when a required artifact is missing", async () => {
@@ -288,6 +343,29 @@ describe("main integration", () => {
         "coverage-missing/lcov.info",
       ]),
     ).toBe(2);
+  });
+
+  it("writes error JSON when a required artifact is missing", async () => {
+    const jsonPath = join(tmpDir, "missing-artifact-result.json");
+
+    expect(
+      await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--require-artifact",
+        "coverage-missing/lcov.info",
+        "--json",
+        jsonPath,
+      ]),
+    ).toBe(2);
+
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result.passed).toBe(false);
+    expect(result.exitCode).toBe(2);
+    expect(result.skipped).toBe(false);
+    expect(result.error).toBe("missing required coverage artifact");
   });
 
   it("prints missing required artifacts through runCheck", async () => {
@@ -1541,6 +1619,90 @@ describe("with a real git repo and a known diff", () => {
     ).toBe(0);
   });
 
+  it("checkCoverage returns structured results and the intended failing exit code", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(check.exitCode).toBe(1);
+    expect(check.advisory).toBe(false);
+    expect(check.skipped).toBe(false);
+    expect(check.error).toBeNull();
+    expect(check.result?.passed).toBe(false);
+  });
+
+  it("checkCoverage returns exit code 0 for advisory failures while preserving failed result", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+      advisory: true,
+    });
+    expect(check.exitCode).toBe(0);
+    expect(check.advisory).toBe(true);
+    expect(check.result?.passed).toBe(false);
+  });
+
+  it("checkCoverage returns a structured skipped result when no coverage data is found", async () => {
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(check.exitCode).toBe(0);
+    expect(check.skipped).toBe(true);
+    expect(check.result).toEqual({ buckets: [], drops: [], informational: [], passed: true });
+    expect(check.warnings.join("\n")).toContain("no coverage data found");
+  });
+
+  it("checkCoverage returns structured config errors", async () => {
+    const check = await checkCoverage({
+      rules: join(tmpDir, "missing.yml"),
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(check.exitCode).toBe(2);
+    expect(check.result).toBeNull();
+    expect(check.error).toContain("failed to load rules");
+  });
+
   it("--advisory still writes JSON output on failure", async () => {
     writeFileSync(
       join(artifactsDir, "lcov.info"),
@@ -1562,6 +1724,45 @@ describe("with a real git repo and a known diff", () => {
     ]);
     const result = JSON.parse(readFileSync(jsonPath, "utf8"));
     expect(result.passed).toBe(false); // content reflects real result
+    expect(result.exitCode).toBe(0);
+    expect(result.advisory).toBe(true);
+    expect(result.skipped).toBe(false);
+  });
+
+  it("--json - writes parseable JSON to stdout without human output", async () => {
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+    const stdoutChunks: string[] = [];
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+    try {
+      const exitCode = await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--base",
+        baseSha,
+        "--head",
+        headSha,
+        "--json",
+        "-",
+      ]);
+      expect(exitCode).toBe(1);
+      const output = stdoutChunks.join("");
+      expect(output).not.toContain("coverage-check: FAILED");
+      const result = JSON.parse(output);
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.advisory).toBe(false);
+      expect(result.skipped).toBe(false);
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 
   it("--drop-only-changed-areas skips drop rules when their area has no diff changes", async () => {

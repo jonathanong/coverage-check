@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "./cli.mts";
 
 describe("cli subcommand dispatch", () => {
@@ -19,6 +19,31 @@ describe("cli subcommand dispatch", () => {
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("prints top-level help", async () => {
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      expect(await main(["--help"])).toBe(0);
+      const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(output).toContain("Commands:");
+      expect(output).toContain("check");
+      expect(output).toContain("--advisory");
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("prints check help through the check subcommand", async () => {
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      expect(await main(["check", "--help"])).toBe(0);
+      const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(output).toContain("coverage-check check");
+      expect(output).toContain("--json <path|->");
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 
   it("defaults to check when no args given", async () => {
