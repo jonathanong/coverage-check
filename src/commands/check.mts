@@ -238,6 +238,7 @@ export async function runCheck(args: CheckArgs): Promise<number> {
 
   if (evaluated.result === null) {
     if (evaluated.skippedReason === "missing required coverage artifact") {
+      if (args.json) writeJson(args.json, check);
       checkRequiredArtifacts(args.artifacts, args.requireArtifacts!);
       return evaluated.exitCode;
     }

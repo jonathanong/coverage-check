@@ -345,6 +345,29 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("writes error JSON when a required artifact is missing", async () => {
+    const jsonPath = join(tmpDir, "missing-artifact-result.json");
+
+    expect(
+      await main([
+        "--rules",
+        rulesPath,
+        "--artifacts",
+        artifactsDir,
+        "--require-artifact",
+        "coverage-missing/lcov.info",
+        "--json",
+        jsonPath,
+      ]),
+    ).toBe(2);
+
+    const result = JSON.parse(readFileSync(jsonPath, "utf8"));
+    expect(result.passed).toBe(false);
+    expect(result.exitCode).toBe(2);
+    expect(result.skipped).toBe(false);
+    expect(result.error).toBe("missing required coverage artifact");
+  });
+
   it("prints missing required artifacts through runCheck", async () => {
     const errors: string[] = [];
     vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
