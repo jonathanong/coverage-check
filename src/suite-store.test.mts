@@ -298,6 +298,13 @@ describe("FileSystemSuiteStore", () => {
           store.put("backend", Buffer.from(""), { sha: val, branch: "main" }),
         ).rejects.toThrow("invalid sha");
       });
+      it(`put() rejects branch=${JSON.stringify(val)} before writing`, async () => {
+        const suite = "backend-branch-check";
+        await expect(store.put(suite, Buffer.from(""), { sha: "abc", branch: val })).rejects.toThrow(
+          "invalid branch",
+        );
+        expect(() => readFileSync(join(tmpDir, suite, "sha", "abc", "lcov.info"))).toThrow();
+      });
     }
   });
 });

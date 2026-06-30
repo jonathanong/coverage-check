@@ -516,6 +516,18 @@ describe("S3SuiteStore — path traversal protection", () => {
         store.put("backend", Buffer.from(""), { sha: val, branch: "main" }),
       ).rejects.toThrow("invalid sha");
     });
+    it(`put() rejects branch=${JSON.stringify(val)} without writing`, async () => {
+      const client = makeClient(async () => ({}));
+      const invalidBranchStore = new S3SuiteStore({
+        bucket: BUCKET,
+        prefix: PREFIX,
+        client,
+      });
+      await expect(
+        invalidBranchStore.put("backend", Buffer.from(LCOV), { sha: "abc", branch: val }),
+      ).rejects.toThrow("invalid branch");
+      expect(client.send).not.toHaveBeenCalled();
+    });
   }
 });
 
