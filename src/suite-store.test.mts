@@ -300,9 +300,9 @@ describe("FileSystemSuiteStore", () => {
       });
       it(`put() rejects branch=${JSON.stringify(val)} before writing`, async () => {
         const suite = "backend-branch-check";
-        await expect(store.put(suite, Buffer.from(""), { sha: "abc", branch: val })).rejects.toThrow(
-          "invalid branch",
-        );
+        await expect(
+          store.put(suite, Buffer.from(""), { sha: "abc", branch: val }),
+        ).rejects.toThrow("invalid branch");
         expect(() => readFileSync(join(tmpDir, suite, "sha", "abc", "lcov.info"))).toThrow();
       });
     }
