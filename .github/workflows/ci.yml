@@ -38,5 +38,6 @@ jobs:
         if: ${{ always() && !cancelled() && steps.token-check.outputs.has_codecov == 'true' }}
         uses: codecov/codecov-action@v7
         with:
+          disable_search: true
           files: ./coverage/lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
