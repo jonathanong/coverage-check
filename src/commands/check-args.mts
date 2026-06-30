@@ -101,6 +101,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
   if (pr !== null && repo.length === 0) {
     throw new Error("--repo is required when --pr is set (or define GITHUB_REPOSITORY)");
   }
+  const summaryFile = process.env["GITHUB_STEP_SUMMARY"] ?? null;
   return {
     rules: parsed.rules,
     artifacts: parsed.artifacts,
@@ -113,7 +114,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     store: makeStore({ fs: storeFs, s3: storeS3 }),
     suite,
     branch: parsed.branch,
-    summaryFile: process.env["GITHUB_STEP_SUMMARY"] ?? null,
+    summaryFile,
     annotateSource: parsed["annotate-source"],
     advisory: parsed.advisory,
     dropOnlyChangedAreas: parsed["drop-only-changed-areas"],
