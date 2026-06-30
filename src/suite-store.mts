@@ -23,6 +23,7 @@ export function encodeBranchName(branch: string): string {
   if (
     typeof branch !== "string" ||
     branch.length === 0 ||
+    branch === "." ||
     branch.includes("..") ||
     branch.includes("\\")
   ) {

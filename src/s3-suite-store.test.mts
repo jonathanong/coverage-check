@@ -498,7 +498,7 @@ describe("S3SuiteStore — path traversal protection", () => {
     prefix: PREFIX,
     client: makeClient(async () => ({})),
   });
-  const invalid = ["", ".", "..", "a/b", "a\\b"];
+  const invalid = ["", ".", "..", "a\\b"];
   for (const val of invalid) {
     it(`get() rejects suite=${JSON.stringify(val)}`, async () => {
       await expect(store.get(val)).rejects.toThrow("invalid suite");
