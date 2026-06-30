@@ -1,15 +1,13 @@
 import { existsSync, globSync } from "node:fs";
 import { join } from "node:path";
 
+const LCOV_INFO_GLOBS = ["**/lcov.info", "**/.*/**/lcov.info"];
+
 /** Recursively collects all lcov.info files under the given directory. */
 export function collectLcovFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
-  return [
-    ...new Set([
-      ...globSync("**/lcov.info", { cwd: dir }),
-      ...globSync("**/.*/**/lcov.info", { cwd: dir }),
-    ]),
-  ].map((file) => join(dir, file));
+  const files = LCOV_INFO_GLOBS.flatMap((pattern) => globSync(pattern, { cwd: dir }));
+  return [...new Set(files)].map((file) => join(dir, file));
 }
 
 /**
