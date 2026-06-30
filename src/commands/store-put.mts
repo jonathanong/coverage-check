@@ -4,6 +4,7 @@ import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov, toLcov } from "../lcov-merge.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { makeStore } from "../store-factory.mts";
+import { parseArgs as parseCliArgs } from "../parse-args.mts";
 import { assertSafePathComponent } from "../suite-store.mts";
 import type { SuiteStore } from "../suite-store.mts";
 
@@ -21,58 +22,30 @@ export type StorePutArgs = {
 };
 
 function parseArgs(argv: string[]): StorePutArgs {
-  let storeFs: string | null = null;
-  let storeS3: string | null = null;
-  const args = {
-    suite: "",
-    suitePrefix: "coverage-",
-    artifacts: "./coverage-artifacts",
-    stripPrefixes: [] as string[],
-    sha: undefined as string | undefined,
-    branch: undefined as string | undefined,
-  };
+  const args = parseCliArgs<{
+    suite: string;
+    "suite-prefix": string;
+    store?: string;
+    "store-fs"?: string;
+    "store-s3"?: string;
+    artifacts: string;
+    "strip-prefix": string[];
+    sha?: string;
+    branch?: string;
+  }>(argv, {
+    suite: { type: "string", default: "" },
+    "suite-prefix": { type: "string", default: "coverage-" },
+    store: { type: "string" },
+    "store-fs": { type: "string" },
+    "store-s3": { type: "string" },
+    artifacts: { type: "string", default: "./coverage-artifacts" },
+    "strip-prefix": { type: "string", multiple: true, default: [] },
+    sha: { type: "string" },
+    branch: { type: "string" },
+  });
 
-  for (let i = 0; i < argv.length; i++) {
-    const flag = argv[i]!;
-    const next = argv[i + 1];
-    const val = (): string => {
-      if (next === undefined || next.startsWith("--")) {
-        throw new Error(`${flag} requires a value`);
-      }
-      i++;
-      return next;
-    };
-    switch (flag) {
-      case "--suite":
-        args.suite = val();
-        break;
-      case "--suite-prefix":
-        args.suitePrefix = val();
-        break;
-      case "--store":
-      case "--store-fs":
-        storeFs = val();
-        break;
-      case "--store-s3":
-        storeS3 = val();
-        break;
-      case "--artifacts":
-        args.artifacts = val();
-        break;
-      case "--strip-prefix":
-        args.stripPrefixes.push(val());
-        break;
-      case "--sha":
-        args.sha = val();
-        break;
-      case "--branch":
-        args.branch = val();
-        break;
-      default:
-        throw new Error(`unknown flag: ${flag}`);
-    }
-  }
-
+  const storeFs = args.store ?? args["store-fs"] ?? null;
+  const storeS3 = args["store-s3"] ?? null;
   if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
   if (!storeFs && !storeS3) throw new Error("--store-fs/--store or --store-s3 is required");
   const hasSha = args.sha !== undefined;
@@ -89,7 +62,15 @@ function parseArgs(argv: string[]): StorePutArgs {
   }
 
   const store = makeStore({ fs: storeFs, s3: storeS3 })!;
-  return { ...args, store };
+  return {
+    suite: args.suite,
+    suitePrefix: args["suite-prefix"],
+    store,
+    artifacts: args.artifacts,
+    stripPrefixes: args["strip-prefix"],
+    sha: args.sha,
+    branch: args.branch,
+  };
 }
 
 export async function main(argv: string[]): Promise<number> {

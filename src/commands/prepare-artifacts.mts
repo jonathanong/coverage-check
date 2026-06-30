@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { parseArgs } from "../parse-args.mts";
 
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
@@ -20,42 +21,22 @@ export type PrepareArtifactsResult = {
 };
 
 export function parsePrepareArtifactsArgs(argv: string[]): PrepareArtifactsArgs {
-  const args: PrepareArtifactsArgs = {
-    artifacts: "./coverage-artifacts",
-    expectedSuites: [],
+  const args = parseArgs<{ artifacts: string; "expect-suite": string[] }>(argv, {
+    artifacts: { type: "string", default: "./coverage-artifacts" },
+    "expect-suite": { type: "string", multiple: true, default: [] },
+  });
+  return {
+    artifacts: args.artifacts,
+    expectedSuites: args["expect-suite"].map((raw) => {
+      const eq = raw.indexOf("=");
+      if (eq <= 0 || eq === raw.length - 1) {
+        throw new Error(
+          `--expect-suite must be formatted as <job>=<suite>, got ${JSON.stringify(raw)}`,
+        );
+      }
+      return { job: raw.slice(0, eq), suite: raw.slice(eq + 1) };
+    }),
   };
-
-  for (let i = 0; i < argv.length; i++) {
-    const flag = argv[i]!;
-    const next = argv[i + 1];
-    const val = (): string => {
-      if (next === undefined || next.startsWith("--")) {
-        throw new Error(`${flag} requires a value`);
-      }
-      i++;
-      return next;
-    };
-    switch (flag) {
-      case "--artifacts":
-        args.artifacts = val();
-        break;
-      case "--expect-suite": {
-        const raw = val();
-        const eq = raw.indexOf("=");
-        if (eq <= 0 || eq === raw.length - 1) {
-          throw new Error(
-            `--expect-suite must be formatted as <job>=<suite>, got ${JSON.stringify(raw)}`,
-          );
-        }
-        args.expectedSuites.push({ job: raw.slice(0, eq), suite: raw.slice(eq + 1) });
-        break;
-      }
-      default:
-        throw new Error(`unknown flag: ${flag}`);
-    }
-  }
-
-  return args;
 }
 
 function expectedLcovPath(artifactsDir: string, suite: string): string {

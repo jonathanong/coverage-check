@@ -1,3 +1,4 @@
+import { forEachTrimmedLine } from "./for-each-line.mts";
 import type { DiffLines } from "./types.mts";
 
 /**
@@ -49,24 +50,7 @@ export function parseDiff(text: string): DiffLines {
   let currentLines: Set<number> | null = null;
   let inHeader = false;
 
-  let start = 0;
-  while (start < text.length) {
-    let end = text.indexOf("\n", start);
-    if (end === -1) end = text.length;
-
-    let lineEnd = end;
-    while (lineEnd > start) {
-      const charCode = text.charCodeAt(lineEnd - 1);
-      if (charCode === 32 || charCode === 9 || charCode === 13) {
-        lineEnd--;
-        continue;
-      }
-      break;
-    }
-
-    const line = text.slice(start, lineEnd);
-    start = end + 1;
-
+  forEachTrimmedLine(text, (line) => {
     // Only parse +++ as a file header when we are in the diff header block
     // (after `diff --git` / `---`). Without this guard a source line beginning
     // with `++ b/` would appear as `+++ b/…` in the diff and be misclassified.
@@ -84,7 +68,7 @@ export function parseDiff(text: string): DiffLines {
       const path = newFilePath;
       if (path === "dev/null") {
         currentLines = null;
-        continue;
+        return;
       }
       currentLines = result.get(path) ?? new Set();
       result.set(path, currentLines);
@@ -93,10 +77,10 @@ export function parseDiff(text: string): DiffLines {
     } else if (line.startsWith("@@ ") && currentLines !== null) {
       // @@ -old_start[,old_count] +new_start[,new_count] @@
       const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
-      if (!match) continue;
+      if (!match) return;
       const newStart = parseInt(match[1]!, 10);
       const newCount = match[2] !== undefined ? parseInt(match[2], 10) : 1;
-      if (newCount === 0) continue;
+      if (newCount === 0) return;
       for (let i = 0; i < newCount; i++) {
         currentLines.add(newStart + i);
       }
@@ -104,7 +88,7 @@ export function parseDiff(text: string): DiffLines {
       currentLines = null;
       inHeader = true;
     }
-  }
+  });
 
   return result;
 }

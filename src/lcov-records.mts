@@ -1,3 +1,5 @@
+import { forEachTrimmedLine } from "./for-each-line.mts";
+
 /**
  * Full-fidelity LCOV data for one source file.
  * Preserves function, branch, and line coverage records.
@@ -84,28 +86,15 @@ function applyRecord(line: string, cov: FullFileCoverage): void {
 export function parseLcovFull(text: string, stripPrefixes: string[] = []): FullLcovData {
   const result: FullLcovData = new Map();
   let current: FullFileCoverage | null = null;
-  let start = 0;
-  while (start < text.length) {
-    let end = text.indexOf("\n", start);
-    if (end === -1) end = text.length;
-    let lineEnd = end;
-    while (lineEnd > start) {
-      const c = text.charCodeAt(lineEnd - 1);
-      if (c === 32 || c === 9 || c === 13) {
-        lineEnd--;
-        continue;
-      }
-      break;
-    }
-    if (text.startsWith("SF:", start)) {
-      current = getOrCreate(result, normalizeSfPath(text.slice(start + 3, lineEnd), stripPrefixes));
-    } else if (lineEnd - start === 13 && text.startsWith("end_of_record", start)) {
+  forEachTrimmedLine(text, (line) => {
+    if (line.startsWith("SF:")) {
+      current = getOrCreate(result, normalizeSfPath(line.slice(3), stripPrefixes));
+    } else if (line === "end_of_record") {
       current = null;
     } else if (current !== null) {
-      applyRecord(text.slice(start, lineEnd), current);
+      applyRecord(line, current);
     }
-    start = end + 1;
-  }
+  });
   return result;
 }
 

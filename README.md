@@ -4,6 +4,8 @@ Patch-coverage gate for CI: checks that newly added lines meet per-path coverage
 
 ## Install
 
+Requires Node.js 24 or newer.
+
 ```sh
 npm install coverage-check
 ```
@@ -47,6 +49,10 @@ coverage-check check \
 ```
 
 The `--suite` flag on `check` tells the tool to use fresh `--artifacts` for the current suite and pull historical coverage from the store for all other suites. The `--branch` flag selects which branch pointer to follow when reading from the store.
+
+S3 is the intended durable persistence layer for conditional CI. GitHub Actions artifacts are useful
+as short-lived fan-in inputs for the current workflow run, but the suite store should hold the
+cross-run baseline.
 
 **S3 key layout:**
 

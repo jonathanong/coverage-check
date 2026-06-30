@@ -1,4 +1,5 @@
 import { decodeGitCString, runGitDiff } from "./diff-parser.mts";
+import { forEachTrimmedLine } from "./for-each-line.mts";
 import type { DiffLineContent } from "./types.mts";
 
 /**
@@ -14,24 +15,7 @@ export function parseDiffWithContent(text: string): DiffLineContent {
   let cursor = 0;
   let inHeader = false;
 
-  let start = 0;
-  while (start < text.length) {
-    let end = text.indexOf("\n", start);
-    if (end === -1) end = text.length;
-
-    let lineEnd = end;
-    while (lineEnd > start) {
-      const charCode = text.charCodeAt(lineEnd - 1);
-      if (charCode === 32 || charCode === 9 || charCode === 13) {
-        lineEnd--;
-        continue;
-      }
-      break;
-    }
-
-    const line = text.slice(start, lineEnd);
-    start = end + 1;
-
+  forEachTrimmedLine(text, (line) => {
     // Only parse +++ as a file header when in the diff header block
     // (after `diff --git` / `---`). Without this guard a source line beginning
     // with `++ b/` would appear as `+++ b/…` in the diff and be misclassified.
@@ -49,7 +33,7 @@ export function parseDiffWithContent(text: string): DiffLineContent {
       const path = newFilePath;
       if (path === "dev/null") {
         currentContent = null;
-        continue;
+        return;
       }
       currentContent = result.get(path) ?? new Map();
       result.set(path, currentContent);
@@ -57,10 +41,10 @@ export function parseDiffWithContent(text: string): DiffLineContent {
       // ignore (part of diff header)
     } else if (line.startsWith("@@ ") && currentContent !== null) {
       const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
-      if (!match) continue;
+      if (!match) return;
       const newStart = parseInt(match[1]!, 10);
       const newCount = match[2] !== undefined ? parseInt(match[2], 10) : 1;
-      if (newCount === 0) continue;
+      if (newCount === 0) return;
       cursor = newStart;
     } else if (line.startsWith("diff --git ")) {
       currentContent = null;
@@ -70,7 +54,7 @@ export function parseDiffWithContent(text: string): DiffLineContent {
       currentContent.set(cursor, line.slice(1).trim());
       cursor++;
     }
-  }
+  });
 
   return result;
 }

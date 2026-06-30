@@ -1,9 +1,7 @@
 import { main as checkMain } from "./commands/check.mts";
 import { checkHelp } from "./commands/check-render.mts";
 import { main as storePutMain } from "./commands/store-put.mts";
-import { main as htmlMain } from "./commands/html.mts";
 import { main as mergeMain } from "./commands/merge.mts";
-import { main as summaryMain } from "./commands/summary.mts";
 import { main as prepareArtifactsMain } from "./commands/prepare-artifacts.mts";
 
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
@@ -20,8 +18,6 @@ export async function main(argv: string[]): Promise<number> {
   if (sub === "check") return checkMain(argv.slice(1));
   if (sub === "store-put") return storePutMain(argv.slice(1));
   if (sub === "merge") return mergeMain(argv.slice(1));
-  if (sub === "html") return htmlMain(argv.slice(1));
-  if (sub === "summary") return summaryMain(argv.slice(1));
   if (sub === "prepare-artifacts") return prepareArtifactsMain(argv.slice(1));
 
   stderr(`coverage-check: unknown subcommand: ${JSON.stringify(sub)}`);
@@ -39,8 +35,8 @@ Commands:
   check       Check patch coverage (default)
   store-put   Store suite LCOV data
   merge       Merge lcov.info files
-  html        Generate HTML coverage reports
-  summary     Generate a coverage summary
+  prepare-artifacts
+              Normalize downloaded coverage artifacts
 
 ${checkHelp()}`;
 }

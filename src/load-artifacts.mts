@@ -1,28 +1,9 @@
-import { readdirSync } from "node:fs";
+import { globSync } from "node:fs";
 import { join } from "node:path";
 
 /** Recursively collects all lcov.info files under the given directory. */
 export function collectLcovFiles(dir: string): string[] {
-  const results: string[] = [];
-  try {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...collectLcovFiles(full));
-      } else if (entry.name === "lcov.info") {
-        results.push(full);
-      }
-    }
-  } catch (err) {
-    /* c8 ignore next */
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT")
-      /* c8 ignore next */
-      process.stderr.write(
-        `coverage-check: unexpected error reading artifacts directory ${dir}: ${err}\n`,
-      );
-    // ENOENT: directory does not exist — no artifacts
-  }
-  return results;
+  return globSync("**/lcov.info", { cwd: dir }).map((file) => join(dir, file));
 }
 
 /**
