@@ -55,6 +55,10 @@ export async function upsertComment(
   passed: boolean,
   gh: GhRunner = defaultGhRunner,
 ): Promise<void> {
+  if (!/^[A-Za-z0-9_.][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/.test(repo)) {
+    throw new Error(`Invalid repository format: ${repo}. Expected owner/repo.`);
+  }
+
   const existingId = await findExistingComment(repo, pr, gh);
 
   if (passed && existingId === null) return;

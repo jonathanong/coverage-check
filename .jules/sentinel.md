@@ -2,3 +2,8 @@
 **Vulnerability:** Command argument injection could occur if the `baseRef` or `headRef` passed to `git merge-base` or `git diff` via `spawn` started with a hyphen.
 **Learning:** Even when avoiding shell execution with `spawn` and passing arguments as an array, passing an untrusted argument starting with a hyphen (e.g. `--output`) to a child process like `git` or `gh` can be interpreted as a command-line flag rather than a positional argument, leading to argument/command injection vulnerabilities.
 **Prevention:** Validate that any arguments corresponding to variable input (such as Git references) do not start with a hyphen (`-`) before passing them to the child process.
+
+## 2026-06-10 - [Strict validation for GitHub repository inputs]
+**Vulnerability:** Path traversal, SSRF, or command injection via unsanitized repository strings (e.g., `--repo`).
+**Learning:** Inputs passed to API endpoint paths or child processes (like the `gh` CLI) must not start with hyphens and should strictly conform to expected formats. Even if shell injection is avoided, an unvalidated string could alter API paths (`repos/../something_else/issues...`) or inject arguments.
+**Prevention:** Strictly validate repository names using a regex like `^[A-Za-z0-9_.][A-Za-z0-9_.-]*/[A-Za-z0-9_.][A-Za-z0-9_.-]*$` to enforce the `owner/repo` structure and block leading hyphens.

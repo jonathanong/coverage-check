@@ -46,6 +46,18 @@ describe("main argument validation", () => {
     }
   });
 
+  it("returns exit code 2 when --pr is set and repo format is invalid", async () => {
+    const saved = process.env["GITHUB_REPOSITORY"];
+    delete process.env["GITHUB_REPOSITORY"];
+    try {
+      expect(await main(["--pr", "42", "--repo", "-invalid/repo"])).toBe(2);
+      expect(await main(["--pr", "42", "--repo", "owner-without-slash-repo"])).toBe(2);
+    } finally {
+      if (saved !== undefined) process.env["GITHUB_REPOSITORY"] = saved;
+      else delete process.env["GITHUB_REPOSITORY"];
+    }
+  });
+
   it("uses fallback defaults when GITHUB_REPOSITORY/REF_NAME/STEP_SUMMARY are unset", async () => {
     const saved: Record<string, string | undefined> = {};
     for (const key of ["GITHUB_REPOSITORY", "GITHUB_REF_NAME", "GITHUB_STEP_SUMMARY"]) {
