@@ -205,13 +205,12 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   const evaluated = await evaluateCheck(args);
 
   if (evaluated.result === null) {
-    if (evaluated.skippedReason) {
-      if (evaluated.skippedReason === "missing required coverage artifact") {
-        checkRequiredArtifacts(args.artifacts, args.requireArtifacts ?? []);
-        return evaluated.exitCode;
-      }
-      stderr(`coverage-check: ${evaluated.skippedReason}`);
+    const skippedReason = evaluated.skippedReason as string;
+    if (skippedReason === "missing required coverage artifact") {
+      checkRequiredArtifacts(args.artifacts, args.requireArtifacts!);
+      return evaluated.exitCode;
     }
+    stderr(`coverage-check: ${skippedReason}`);
     return evaluated.exitCode;
   }
 

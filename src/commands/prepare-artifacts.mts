@@ -134,9 +134,9 @@ export function main(argv: string[]): number {
   try {
     return runPrepareArtifacts(parsePrepareArtifactsArgs(argv));
   } catch (error) {
-    stderr(
-      `coverage-check prepare-artifacts: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    /* c8 ignore next -- defensive fallback; local command errors throw Error instances */
+    const message = error instanceof Error ? error.message : String(error);
+    stderr(`coverage-check prepare-artifacts: ${message}`);
     return 2;
   }
 }

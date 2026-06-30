@@ -290,6 +290,33 @@ describe("main integration", () => {
     ).toBe(2);
   });
 
+  it("prints missing required artifacts through runCheck", async () => {
+    const errors: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      errors.push(String(chunk));
+      return true;
+    });
+
+    expect(
+      await runCheck({
+        rules: rulesPath,
+        artifacts: artifactsDir,
+        base: "HEAD",
+        head: "HEAD",
+        pr: null,
+        repo: "",
+        json: null,
+        stripPrefixes: [],
+        store: null,
+        suite: null,
+        requireArtifacts: ["coverage-missing/lcov.info"],
+      }),
+    ).toBe(2);
+    expect(errors.join("")).toContain(
+      "::error:: missing expected coverage artifact: coverage-missing/lcov.info",
+    );
+  });
+
   it("passes --require-artifact when the file exists", async () => {
     const suiteDir = join(artifactsDir, "coverage-backend");
     mkdirSync(suiteDir);
