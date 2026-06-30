@@ -329,6 +329,9 @@ describe("assertValidRepo", () => {
   });
 
   it("rejects invalid repository strings", () => {
+    expect(() => assertValidRepo("")).toThrow("Invalid repository format");
+    expect(() => assertValidRepo("   ")).toThrow("Invalid repository format");
+    expect(() => assertValidRepo(null as unknown as string)).toThrow("Invalid repository format");
     expect(() => assertValidRepo("-invalid/repo")).toThrow("Invalid repository format");
     expect(() => assertValidRepo("owner-without-slash-repo")).toThrow("Invalid repository format");
     expect(() => assertValidRepo("owner/.")).toThrow("Invalid repository format");
