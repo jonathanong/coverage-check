@@ -63,6 +63,22 @@ describe("prepare-artifacts", () => {
     expect(existsSync(join(artifactsDir, "lcov.info"))).toBe(false);
   });
 
+  it("removes duplicate root-level LCOV when all expected suite artifacts exist", () => {
+    mkdirSync(join(artifactsDir, "coverage-web"), { recursive: true });
+    mkdirSync(join(artifactsDir, "coverage-tooling"), { recursive: true });
+    writeFileSync(join(artifactsDir, "coverage-web", "lcov.info"), "TN:\n");
+    writeFileSync(join(artifactsDir, "coverage-tooling", "lcov.info"), "TN:\n");
+    writeFileSync(join(artifactsDir, "lcov.info"), "TN:\n");
+
+    const message = normalizeCoverageArtifacts(artifactsDir, [
+      { job: "test-web", suite: "web" },
+      { job: "test-tooling", suite: "tooling" },
+    ]);
+
+    expect(message).toContain("all expected named coverage artifacts already exist");
+    expect(existsSync(join(artifactsDir, "lcov.info"))).toBe(false);
+  });
+
   it("rejects a root-level LCOV when multiple expected suites are missing", () => {
     writeFileSync(join(artifactsDir, "lcov.info"), "TN:\n");
 
@@ -100,6 +116,16 @@ describe("prepare-artifacts", () => {
       artifacts: "coverage-artifacts",
       expectedSuites: [{ job: "test-web", suite: "web" }],
     });
+  });
+
+  it("rejects missing flag values", () => {
+    expect(() => parsePrepareArtifactsArgs(["--expect-suite"])).toThrow(
+      "--expect-suite requires a value",
+    );
+  });
+
+  it("rejects unknown flags", () => {
+    expect(() => parsePrepareArtifactsArgs(["--unknown"])).toThrow("unknown flag: --unknown");
   });
 
   it("returns 2 for malformed --expect-suite values", () => {
