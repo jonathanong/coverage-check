@@ -82,6 +82,10 @@ export function normalizeCoverageArtifacts(
   const rootLcovPath = join(artifactsDir, "lcov.info");
   if (!existsSync(rootLcovPath)) return "Coverage artifact layout already uses named directories.";
 
+  if (expectedSuites.length === 0) {
+    return "No expected coverage suites configured; leaving root-level lcov.info unchanged.";
+  }
+
   if (expectedSuites.length !== 1) {
     const missingNamedSuites = missingCoverageArtifacts(artifactsDir, expectedSuites);
     if (missingNamedSuites.length === 0) {

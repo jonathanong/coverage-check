@@ -79,6 +79,15 @@ describe("prepare-artifacts", () => {
     expect(existsSync(join(artifactsDir, "lcov.info"))).toBe(false);
   });
 
+  it("leaves root-level LCOV unchanged when no suites are expected", () => {
+    writeFileSync(join(artifactsDir, "lcov.info"), "TN:\n");
+
+    const message = normalizeCoverageArtifacts(artifactsDir, []);
+
+    expect(message).toContain("No expected coverage suites configured");
+    expect(readFileSync(join(artifactsDir, "lcov.info"), "utf8")).toBe("TN:\n");
+  });
+
   it("rejects a root-level LCOV when multiple expected suites are missing", () => {
     writeFileSync(join(artifactsDir, "lcov.info"), "TN:\n");
 
