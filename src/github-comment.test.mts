@@ -73,7 +73,7 @@ describe("upsertComment", () => {
       "Invalid repository format: owner/.. Expected owner/repo.",
     );
     await expect(upsertComment(FAIL_BODY, "owner/..", 42, false, gh)).rejects.toThrow(
-      "Invalid repository format: owner/.. Expected owner/repo.",
+      "Invalid repository format: owner/... Expected owner/repo.",
     );
   });
 
