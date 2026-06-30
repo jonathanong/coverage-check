@@ -46,6 +46,13 @@ describe("collectLcovFiles", () => {
     expect(results).toHaveLength(2);
   });
 
+  it("finds lcov.info in hidden artifact directories", () => {
+    const hidden = join(tmpDir, ".coverage", "nested");
+    mkdirSync(hidden, { recursive: true });
+    writeFileSync(join(hidden, "lcov.info"), "");
+    expect(collectLcovFiles(tmpDir)).toEqual([join(hidden, "lcov.info")]);
+  });
+
   it("finds lcov.info in multiple sibling subdirectories", () => {
     mkdirSync(join(tmpDir, "backend"));
     mkdirSync(join(tmpDir, "frontend"));

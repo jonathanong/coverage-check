@@ -4,7 +4,12 @@ import { join } from "node:path";
 /** Recursively collects all lcov.info files under the given directory. */
 export function collectLcovFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
-  return globSync("**/lcov.info", { cwd: dir }).map((file) => join(dir, file));
+  return [
+    ...new Set([
+      ...globSync("**/lcov.info", { cwd: dir }),
+      ...globSync("**/.*/**/lcov.info", { cwd: dir }),
+    ]),
+  ].map((file) => join(dir, file));
 }
 
 /**
