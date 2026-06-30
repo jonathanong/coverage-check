@@ -101,7 +101,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
   if (pr !== null && repo.length === 0) {
     throw new Error("--repo is required when --pr is set (or define GITHUB_REPOSITORY)");
   }
-  const summaryFile = process.env["GITHUB_STEP_SUMMARY"] ?? null;
+  const summaryFile = process.env["GITHUB_STEP_SUMMARY"];
   return {
     rules: parsed.rules,
     artifacts: parsed.artifacts,
