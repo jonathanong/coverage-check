@@ -134,6 +134,8 @@ export async function runGitDiff(baseRef: string, headRef: string): Promise<stri
   // --src-prefix/--dst-prefix override diff.noprefix and diff.mnemonicPrefix git config
   return spawnProcess("git", [
     "diff",
+    "-M",
+    "-l0",
     "--unified=0",
     "--inter-hunk-context=0",
     "--no-color",

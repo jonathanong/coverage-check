@@ -137,6 +137,16 @@ Two common sources of confusion:
 The annotation affects only the stdout failure output. The GitHub PR sticky comment and Actions step
 summary are unchanged.
 
+### Renamed and relocated files
+
+`coverage-check` asks Git to detect renames with no rename-attempt limit before parsing patch lines.
+Pure file moves do not create patch-coverage obligations: unchanged relocated lines are not treated
+as newly added lines. If a moved file also changes content, Git still emits normal hunks for the
+edited new-side lines, and those lines must satisfy the matching patch-coverage rule.
+
+Large rewrites that fall below Git's rename similarity threshold may still appear as delete/add
+pairs. In that case the destination file's executable lines are checked as new patch lines.
+
 ### Merging LCOV files
 
 Use the `merge` subcommand to fold multiple `lcov.info` files into a single output that preserves function and branch records (`FN`, `FNDA`, `BRDA`) as well as summary counters (`LF/LH/FNF/FNH/BRF/BRH`):

@@ -1,3 +1,15 @@
+import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  rmdirSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { decodeGitCString, parseDiff, runGitDiff } from "./diff-parser.mts";
 import { parseDiffWithContent } from "./diff-parser-content.mts";
@@ -444,5 +456,53 @@ describe("runGitDiff", () => {
     await expect(runGitDiff("HEAD", "--config")).rejects.toThrow(
       "Git reference cannot start with a hyphen (prevents argument injection)",
     );
+  });
+
+  it("detects large pure renames even when git renameLimit config is low", async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), "coverage-check-renames-"));
+    const originalCwd = process.cwd();
+    const git = (args: string[]) =>
+      execFileSync("git", args, {
+        cwd: repoDir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "T",
+          GIT_AUTHOR_EMAIL: "t@t.com",
+          GIT_COMMITTER_NAME: "T",
+          GIT_COMMITTER_EMAIL: "t@t.com",
+        },
+      });
+
+    try {
+      git(["init", "-q"]);
+      mkdirSync(join(repoDir, "src"));
+      for (let i = 1; i <= 20; i++) {
+        writeFileSync(join(repoDir, "src", `file-${i}.mts`), `export const value${i} = ${i};\n`);
+      }
+      git(["add", "src"]);
+      git(["commit", "-q", "-m", "base"]);
+      const baseSha = git(["rev-parse", "HEAD"]).trim();
+
+      git(["config", "diff.renameLimit", "1"]);
+      mkdirSync(join(repoDir, "moved"));
+      for (const fileName of readdirSync(join(repoDir, "src"))) {
+        renameSync(join(repoDir, "src", fileName), join(repoDir, "moved", fileName));
+      }
+      rmdirSync(join(repoDir, "src"));
+      git(["add", "."]);
+      git(["commit", "-q", "-m", "move files"]);
+      const headSha = git(["rev-parse", "HEAD"]).trim();
+
+      process.chdir(repoDir);
+      const diff = await runGitDiff(baseSha, headSha);
+
+      expect(diff).toContain("rename from src/file-1.mts");
+      expect(diff).not.toContain("@@");
+      expect(parseDiff(diff).size).toBe(0);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(repoDir, { recursive: true, force: true });
+    }
   });
 });
