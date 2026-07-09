@@ -1,13 +1,5 @@
 import { execFileSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  rmdirSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -460,7 +452,6 @@ describe("runGitDiff", () => {
 
   it("detects large pure renames even when git renameLimit config is low", async () => {
     const repoDir = mkdtempSync(join(tmpdir(), "coverage-check-renames-"));
-    const originalCwd = process.cwd();
     const git = (args: string[]) =>
       execFileSync("git", args, {
         cwd: repoDir,
@@ -489,19 +480,17 @@ describe("runGitDiff", () => {
       for (const fileName of readdirSync(join(repoDir, "src"))) {
         renameSync(join(repoDir, "src", fileName), join(repoDir, "moved", fileName));
       }
-      rmdirSync(join(repoDir, "src"));
+      rmSync(join(repoDir, "src"), { recursive: true, force: true });
       git(["add", "."]);
       git(["commit", "-q", "-m", "move files"]);
       const headSha = git(["rev-parse", "HEAD"]).trim();
 
-      process.chdir(repoDir);
-      const diff = await runGitDiff(baseSha, headSha);
+      const diff = await runGitDiff(baseSha, headSha, repoDir);
 
       expect(diff).toContain("rename from src/file-1.mts");
       expect(diff).not.toContain("@@");
       expect(parseDiff(diff).size).toBe(0);
     } finally {
-      process.chdir(originalCwd);
       rmSync(repoDir, { recursive: true, force: true });
     }
   });

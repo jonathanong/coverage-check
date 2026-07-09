@@ -110,7 +110,7 @@ export function parseDiff(text: string): DiffLines {
 }
 
 /** Runs git merge-base + git diff and returns the raw diff text. Internal shared helper. */
-export async function runGitDiff(baseRef: string, headRef: string): Promise<string> {
+export async function runGitDiff(baseRef: string, headRef: string, cwd?: string): Promise<string> {
   if (baseRef.startsWith("-") || headRef.startsWith("-")) {
     throw new Error("Git reference cannot start with a hyphen (prevents argument injection)");
   }
@@ -119,7 +119,7 @@ export async function runGitDiff(baseRef: string, headRef: string): Promise<stri
   const spawnProcess = (cmd: string, args: string[]) =>
     new Promise<string>((resolve, reject) => {
       const chunks: Buffer[] = [];
-      const proc = spawn(cmd, args, { stdio: ["ignore", "pipe", "inherit"] });
+      const proc = spawn(cmd, args, { stdio: ["ignore", "pipe", "inherit"], cwd });
       proc.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
       proc.on("error", reject);
       proc.on("close", (code) =>
