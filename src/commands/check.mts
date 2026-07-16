@@ -1,6 +1,6 @@
 // oxlint-disable max-lines -- check evaluation and CLI rendering share one pipeline
 import { readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { relative } from "node:path";
 import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov } from "../lcov-merge.mts";
 import { getChangedLines } from "../diff-parser.mts";
@@ -59,14 +59,16 @@ function validateCheckArgs(args: CheckArgs): void {
   for (const suite of activeSuites) assertSafePathComponent(suite, "suite");
 }
 
-function suiteName(lcovPath: string): string {
-  const directory = basename(dirname(lcovPath));
-  if (!directory.startsWith("coverage-") || directory === "coverage-") {
-    throw new Error(`expected LCOV parent directory to match coverage-<suite>: ${lcovPath}`);
+function suiteName(lcovPath: string, artifacts: string): string {
+  const segments = relative(artifacts, lcovPath).split(/[/\\]/);
+  for (let index = segments.length - 2; index >= 0; index -= 1) {
+    const directory = segments[index];
+    if (!directory?.startsWith("coverage-") || directory === "coverage-") continue;
+    const suite = directory.slice("coverage-".length);
+    assertSafePathComponent(suite, "suite");
+    return suite;
   }
-  const suite = directory.slice("coverage-".length);
-  assertSafePathComponent(suite, "suite");
-  return suite;
+  throw new Error(`expected LCOV parent directory to match coverage-<suite>: ${lcovPath}`);
 }
 
 async function loadActiveSuiteCoverage(
@@ -77,7 +79,7 @@ async function loadActiveSuiteCoverage(
   const activeSuites = new Set(args.activeSuites ?? []);
   const freshBySuite = new Map<string, LcovData[]>();
   for (const file of collectLcovFiles(args.artifacts)) {
-    const suite = suiteName(file);
+    const suite = suiteName(file, args.artifacts);
     const reports = freshBySuite.get(suite) ?? [];
     reports.push(parseLcov(readFileSync(file, "utf8"), stripPrefixes));
     freshBySuite.set(suite, reports);

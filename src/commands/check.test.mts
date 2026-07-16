@@ -272,6 +272,34 @@ describe("main integration", () => {
     expect(evaluated.skippedReason).toContain("expected LCOV parent directory");
   });
 
+  it("finds suite identity above nested fresh reports", async () => {
+    writeFileSync(
+      rulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    const nestedDir = join(artifactsDir, "coverage-backend", "coverage");
+    mkdirSync(nestedDir, { recursive: true });
+    writeFileSync(join(nestedDir, "lcov.info"), "SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "INVALID_BASE_NOT_NEEDED",
+      head: "INVALID_HEAD_NOT_NEEDED",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+      activeSuites: ["backend"],
+      dropOnly: true,
+    });
+
+    expect(evaluated.exitCode).toBe(0);
+    expect(evaluated.suiteSources).toMatchObject([{ suite: "backend", source: "fresh" }]);
+  });
+
   it("skips drop-only active-suite checks when no baseline store is configured", async () => {
     writeFileSync(
       rulesPath,
