@@ -2,25 +2,25 @@ packages:
   - .
 
 overrides:
-  '@aws-sdk/checksums': 3.1000.8
-  '@aws-sdk/core': 3.974.23
+  '@aws-sdk/checksums': 3.1000.16
+  '@aws-sdk/core': 3.975.1
   '@aws-sdk/credential-provider-env': 3.972.49
   '@aws-sdk/credential-provider-http': 3.972.51
   '@aws-sdk/credential-provider-ini': 3.972.56
   '@aws-sdk/credential-provider-login': 3.972.55
-  '@aws-sdk/credential-provider-node': 3.972.58
+  '@aws-sdk/credential-provider-node': 3.972.66
   '@aws-sdk/credential-provider-process': 3.972.49
   '@aws-sdk/credential-provider-sso': 3.972.55
   '@aws-sdk/credential-provider-web-identity': 3.972.55
   '@aws-sdk/middleware-flexible-checksums': 3.974.33
-  '@aws-sdk/middleware-sdk-s3': 3.972.54
+  '@aws-sdk/middleware-sdk-s3': 3.972.62
   '@aws-sdk/nested-clients': 3.997.23
-  '@aws-sdk/signature-v4-multi-region': 3.996.35
+  '@aws-sdk/signature-v4-multi-region': 3.996.39
   '@aws-sdk/token-providers': 3.1074.0
-  '@aws-sdk/types': 3.973.13
+  '@aws-sdk/types': 3.974.0
   '@aws-sdk/xml-builder': 3.972.31
-  '@smithy/core': 3.26.0
+  '@smithy/core': 3.29.2
   '@smithy/credential-provider-imds': 4.4.2
-  '@smithy/fetch-http-handler': 5.5.2
-  '@smithy/node-http-handler': 4.8.2
+  '@smithy/fetch-http-handler': 5.6.4
+  '@smithy/node-http-handler': 4.9.4
   '@smithy/signature-v4': 5.5.2
