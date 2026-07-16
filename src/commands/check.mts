@@ -92,9 +92,8 @@ async function loadActiveSuiteCoverage(
 
   const storedSuites: { suite: string; lcov: LcovData }[] = [];
   if (args.store !== null) {
-    const names = (await args.store.list()).filter((suite) => activeSuites.has(suite));
     const loaded = await Promise.all(
-      names.map(async (suite) => {
+      [...activeSuites].map(async (suite) => {
         const buffer = await args.store!.get(suite, { branch });
         return buffer === null
           ? null
