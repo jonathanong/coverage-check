@@ -19,6 +19,7 @@ Options:
   --pr <number>                  Pull request number for sticky comment
   --repo <owner/repo>            Repository for sticky comment (default: $GITHUB_REPOSITORY)
   --json <path|->                Write JSON result to a path, or JSON-only stdout with -
+  --no-summary-file              Do not write the GitHub Actions step summary
   --annotate-source              Print trimmed source text for each uncovered line
   --advisory                     Exit 0 even on coverage shortfall
   --drop-only-changed-areas      Restrict no_coverage_drop to changed rule areas

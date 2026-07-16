@@ -89,6 +89,9 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
       case "--json":
         args.json = val();
         break;
+      case "--no-summary-file":
+        args.summaryFile = null;
+        break;
       case "--suite": {
         const s = val();
         assertSafePathComponent(s, "suite");
