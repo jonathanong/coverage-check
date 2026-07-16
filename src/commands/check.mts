@@ -76,7 +76,7 @@ async function loadActiveSuiteCoverage(
   branch: string,
   stripPrefixes: string[],
 ): Promise<LoadedActiveSuiteCoverage> {
-  const activeSuites = new Set(args.activeSuites ?? []);
+  const activeSuites = new Set(args.activeSuites!);
   const freshBySuite = new Map<string, LcovData[]>();
   for (const file of collectLcovFiles(args.artifacts)) {
     const suite = suiteName(file, args.artifacts);

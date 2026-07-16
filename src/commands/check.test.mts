@@ -822,6 +822,36 @@ describe("runCheck with suite store", () => {
     expect(evaluated.suiteSources.map(({ suite }) => suite)).toContain("new-suite");
   });
 
+  it("ignores an active suite removed from the store after listing", async () => {
+    writeFileSync(
+      rulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    await store.put("backend", Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
+    vi.spyOn(store, "get").mockResolvedValueOnce(null);
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "INVALID_BASE_NOT_NEEDED",
+      head: "INVALID_HEAD_NOT_NEEDED",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: null,
+      activeSuites: ["backend"],
+      dropOnly: true,
+    });
+
+    expect(evaluated.exitCode).toBe(0);
+    expect(evaluated.skippedReason).toContain("no coverage data found");
+  });
+
   it("uses the diff only to select changed rules in drop-only mode", async () => {
     writeFileSync(
       rulesPath,
