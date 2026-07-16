@@ -1,7 +1,7 @@
 /* c8 ignore next */
 import { readFileSync } from "node:fs";
 import { matchesGlob } from "node:path";
-import yaml from "js-yaml";
+import { load as loadYaml } from "js-yaml";
 import type { CoverageRule, CoverageRules, DiffLines } from "./types.mts";
 
 function validateDropRuleFields(rule: Partial<CoverageRule>, i: number, rulesPath: string): void {
@@ -22,7 +22,7 @@ function validateDropRuleFields(rule: Partial<CoverageRule>, i: number, rulesPat
 
 export function loadRules(rulesPath: string): CoverageRule[] {
   const text = readFileSync(rulesPath, "utf8");
-  const parsed = yaml.load(text) as CoverageRules;
+  const parsed = loadYaml(text) as CoverageRules;
   if (!Array.isArray(parsed?.rules)) {
     throw new Error(`${rulesPath}: expected a 'rules' array`);
   }
