@@ -112,6 +112,28 @@ describe("main argument validation", () => {
     }
   });
 
+  it("parses repeatable active suites and drop-only mode", () => {
+    const args = parseCheckArgs([
+      "--active-suite",
+      "backend",
+      "--active-suite",
+      "web",
+      "--drop-only",
+    ]);
+    expect(args.activeSuites).toEqual(["backend", "web"]);
+    expect(args.dropOnly).toBe(true);
+  });
+
+  it("rejects single-suite and active-suite modes together", () => {
+    expect(() => parseCheckArgs(["--suite", "backend", "--active-suite", "web"])).toThrow(
+      "--suite and --active-suite are mutually exclusive",
+    );
+  });
+
+  it("rejects unsafe active suite names", () => {
+    expect(() => parseCheckArgs(["--active-suite", "../backend"])).toThrow("invalid suite");
+  });
+
   it("uses fallback defaults when GITHUB_REPOSITORY/REF_NAME/STEP_SUMMARY are unset", async () => {
     const saved: Record<string, string | undefined> = {};
     for (const key of ["GITHUB_REPOSITORY", "GITHUB_REF_NAME", "GITHUB_STEP_SUMMARY"]) {
@@ -207,6 +229,103 @@ describe("main integration", () => {
         artifactsDir,
       ]),
     ).toBe(2);
+  });
+
+  it("returns a structured error for conflicting programmatic suite modes", async () => {
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "HEAD",
+      head: "HEAD",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: "backend",
+      activeSuites: ["web"],
+    });
+
+    expect(check.exitCode).toBe(2);
+    expect(check.error).toContain("suite and activeSuites are mutually exclusive");
+  });
+
+  it("rejects fresh reports without suite identity in active-suite mode", async () => {
+    writeFileSync(join(artifactsDir, "lcov.info"), "SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "HEAD",
+      head: "HEAD",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+      activeSuites: ["backend"],
+      dropOnly: true,
+    });
+
+    expect(evaluated.exitCode).toBe(2);
+    expect(evaluated.skippedReason).toContain("expected LCOV parent directory");
+  });
+
+  it("finds suite identity above nested fresh reports", async () => {
+    writeFileSync(
+      rulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    const nestedDir = join(artifactsDir, "coverage-backend", "coverage");
+    mkdirSync(nestedDir, { recursive: true });
+    writeFileSync(join(nestedDir, "lcov.info"), "SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "INVALID_BASE_NOT_NEEDED",
+      head: "INVALID_HEAD_NOT_NEEDED",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+      activeSuites: ["backend"],
+      dropOnly: true,
+    });
+
+    expect(evaluated.exitCode).toBe(0);
+    expect(evaluated.suiteSources).toMatchObject([{ suite: "backend", source: "fresh" }]);
+  });
+
+  it("skips drop-only active-suite checks when no baseline store is configured", async () => {
+    writeFileSync(
+      rulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    const freshDir = join(artifactsDir, "coverage-backend");
+    mkdirSync(freshDir);
+    writeFileSync(join(freshDir, "lcov.info"), "SF:backend/foo.mts\nDA:1,1\nend_of_record\n");
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "INVALID_BASE_NOT_NEEDED",
+      head: "INVALID_HEAD_NOT_NEEDED",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+      activeSuites: ["backend"],
+      dropOnly: true,
+    });
+
+    expect(evaluated.exitCode).toBe(0);
+    expect(evaluated.result?.drops[0]).toMatchObject({ passed: true, skipped: true });
   });
 
   it("accepts --annotate-source flag", async () => {
@@ -608,6 +727,203 @@ describe("runCheck with suite store", () => {
         suite: "backend",
       }),
     ).toBe(0);
+  });
+
+  it("overlays fresh active suites, retains inactive suites, and excludes stale suites", async () => {
+    writeFileSync(
+      rulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    await store.put(
+      "backend-primary",
+      Buffer.from("SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n"),
+      { sha: "test-sha", branch: "main" },
+    );
+    await store.put(
+      "backend-secondary",
+      Buffer.from("SF:backend/secondary.mts\nDA:1,1\nend_of_record\n"),
+      { sha: "test-sha", branch: "main" },
+    );
+    await store.put(
+      "deleted-suite",
+      Buffer.from("SF:backend/deleted.mts\nDA:1,0\nend_of_record\n"),
+      { sha: "test-sha", branch: "main" },
+    );
+    const freshDir = join(artifactsDir, "coverage-backend-primary");
+    mkdirSync(freshDir);
+    writeFileSync(
+      join(freshDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "INVALID_BASE_NOT_NEEDED",
+      head: "INVALID_HEAD_NOT_NEEDED",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: null,
+      activeSuites: ["backend-primary", "backend-secondary"],
+      dropOnly: true,
+    });
+
+    expect(evaluated.exitCode).toBe(1);
+    expect(evaluated.result?.buckets).toEqual([]);
+    expect(evaluated.result?.informational).toEqual([]);
+    expect(evaluated.result?.drops[0]).toMatchObject({
+      baselinePct: 100,
+      passed: false,
+      skipped: false,
+    });
+    expect(evaluated.result?.drops[0]?.currentPct).toBeCloseTo(200 / 3);
+    expect(evaluated.suiteSources.map(({ suite, source }) => [suite, source])).toEqual([
+      ["backend-secondary", "store"],
+      ["backend-primary", "fresh"],
+    ]);
+  });
+
+  it("includes fresh suites that are absent from the active manifest", async () => {
+    writeFileSync(
+      rulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    await store.put("backend", Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
+    const freshDir = join(artifactsDir, "coverage-new-suite");
+    mkdirSync(freshDir);
+    writeFileSync(join(freshDir, "lcov.info"), "SF:backend/new.mts\nDA:1,0\nend_of_record\n");
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "INVALID_BASE_NOT_NEEDED",
+      head: "INVALID_HEAD_NOT_NEEDED",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: null,
+      activeSuites: ["backend"],
+      dropOnly: true,
+    });
+
+    expect(evaluated.result?.drops[0]).toMatchObject({
+      baselinePct: 100,
+      currentPct: 50,
+      passed: false,
+    });
+    expect(evaluated.suiteSources.map(({ suite }) => suite)).toContain("new-suite");
+  });
+
+  it("loads only named active suites without listing the store", async () => {
+    writeFileSync(
+      rulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    const listSpy = vi.spyOn(store, "list");
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "INVALID_BASE_NOT_NEEDED",
+      head: "INVALID_HEAD_NOT_NEEDED",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: null,
+      activeSuites: ["backend"],
+      dropOnly: true,
+    });
+
+    expect(evaluated.exitCode).toBe(0);
+    expect(evaluated.skippedReason).toContain("no coverage data found");
+    expect(listSpy).not.toHaveBeenCalled();
+  });
+
+  it("uses the diff only to select changed rules in drop-only mode", async () => {
+    writeFileSync(
+      rulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    await store.put("backend", Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
+    const freshDir = join(artifactsDir, "coverage-backend");
+    mkdirSync(freshDir);
+    writeFileSync(join(freshDir, "lcov.info"), "SF:backend/foo.mts\nDA:1,0\nend_of_record\n");
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: "HEAD",
+      head: "HEAD",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store,
+      suite: null,
+      activeSuites: ["backend"],
+      dropOnly: true,
+      dropOnlyChangedAreas: true,
+    });
+
+    expect(evaluated.exitCode).toBe(0);
+    expect(evaluated.result?.drops[0]).toMatchObject({ passed: true, skipped: true });
+  });
+
+  it("prints only coverage-drop output in drop-only mode", async () => {
+    writeFileSync(
+      rulesPath,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    await store.put("backend", Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n"), {
+      sha: "test-sha",
+      branch: "main",
+    });
+    const freshDir = join(artifactsDir, "coverage-backend");
+    mkdirSync(freshDir);
+    writeFileSync(join(freshDir, "lcov.info"), "SF:backend/foo.mts\nDA:1,0\nend_of_record\n");
+    const output: string[] = [];
+    const writeSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        output.push(String(chunk));
+        return true;
+      });
+    try {
+      expect(
+        await runCheck({
+          rules: rulesPath,
+          artifacts: artifactsDir,
+          base: "INVALID_BASE_NOT_NEEDED",
+          head: "INVALID_HEAD_NOT_NEEDED",
+          pr: null,
+          repo: "",
+          json: null,
+          stripPrefixes: [],
+          store,
+          suite: null,
+          activeSuites: ["backend"],
+          dropOnly: true,
+          summaryFile: null,
+        }),
+      ).toBe(1);
+      expect(output.join("")).toContain("coverage-check: COVERAGE REGRESSION");
+      expect(output.join("")).not.toContain("coverage-check: FAILED");
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 
   it("evaluateCheck returns structured JSON-equivalent results without writing a file", async () => {

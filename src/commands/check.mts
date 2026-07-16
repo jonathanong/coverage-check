@@ -1,5 +1,6 @@
 // oxlint-disable max-lines -- check evaluation and CLI rendering share one pipeline
 import { readFileSync, writeFileSync } from "node:fs";
+import { relative } from "node:path";
 import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov } from "../lcov-merge.mts";
 import { getChangedLines } from "../diff-parser.mts";
@@ -11,6 +12,7 @@ import { collapseRanges, renderFailureComment } from "../report.mts";
 import { upsertComment } from "../github-comment.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { writeSummary } from "../step-summary.mts";
+import { assertSafePathComponent } from "../suite-store.mts";
 import { parseCheckArgs } from "./check-args.mts";
 import { checkHelp } from "./check-render.mts";
 import { emptyResult, toJsonPayload } from "./check-result.mts";
@@ -23,8 +25,7 @@ import {
 import type { CheckArgs } from "./check-args.mts";
 import type { CheckRunResult } from "./check-result.mts";
 import type { SuiteSource } from "../step-summary.mts";
-import type { DiffLineContent, LcovData } from "../types.mts";
-import type { CoverageCheckResult } from "../types.mts";
+import type { CoverageCheckResult, DiffLineContent, DiffLines, LcovData } from "../types.mts";
 export type { CheckArgs } from "./check-args.mts";
 export type { CheckRunResult } from "./check-result.mts";
 
@@ -42,6 +43,83 @@ export type EvaluatedCheck = {
   parsedSources: { name: string; lcov: LcovData }[];
   warnings: string[];
 };
+
+type LoadedActiveSuiteCoverage = {
+  baseline: LcovData | null;
+  reports: LcovData[];
+  suiteSources: SuiteSource[];
+  parsedSources: { name: string; lcov: LcovData }[];
+};
+
+function validateCheckArgs(args: CheckArgs): void {
+  const activeSuites = args.activeSuites ?? [];
+  if (args.suite !== null && activeSuites.length > 0) {
+    throw new Error("suite and activeSuites are mutually exclusive");
+  }
+  for (const suite of activeSuites) assertSafePathComponent(suite, "suite");
+}
+
+function suiteName(lcovPath: string, artifacts: string): string {
+  const segments = relative(artifacts, lcovPath).split(/[/\\]/);
+  for (let index = segments.length - 2; index >= 0; index -= 1) {
+    const directory = segments[index];
+    if (!directory?.startsWith("coverage-") || directory === "coverage-") continue;
+    const suite = directory.slice("coverage-".length);
+    assertSafePathComponent(suite, "suite");
+    return suite;
+  }
+  throw new Error(`expected LCOV parent directory to match coverage-<suite>: ${lcovPath}`);
+}
+
+async function loadActiveSuiteCoverage(
+  args: CheckArgs,
+  branch: string,
+  stripPrefixes: string[],
+): Promise<LoadedActiveSuiteCoverage> {
+  const activeSuites = new Set(args.activeSuites!);
+  const freshBySuite = new Map<string, LcovData[]>();
+  for (const file of collectLcovFiles(args.artifacts)) {
+    const suite = suiteName(file, args.artifacts);
+    const reports = freshBySuite.get(suite) ?? [];
+    reports.push(parseLcov(readFileSync(file, "utf8"), stripPrefixes));
+    freshBySuite.set(suite, reports);
+  }
+  const freshSuites = [...freshBySuite].map(([suite, reports]) => ({
+    suite,
+    lcov: mergeLcov(reports),
+  }));
+  const freshSuiteNames = new Set(freshSuites.map(({ suite }) => suite));
+
+  const storedSuites: { suite: string; lcov: LcovData }[] = [];
+  if (args.store !== null) {
+    const loaded = await Promise.all(
+      [...activeSuites].map(async (suite) => {
+        const buffer = await args.store!.get(suite, { branch });
+        return buffer === null
+          ? null
+          : { suite, lcov: parseLcov(buffer.toString("utf8"), stripPrefixes) };
+      }),
+    );
+    storedSuites.push(
+      ...loaded.filter((stored): stored is { suite: string; lcov: LcovData } => stored !== null),
+    );
+  }
+
+  const currentStoredSuites = storedSuites.filter(({ suite }) => !freshSuiteNames.has(suite));
+  const currentSuites = [
+    ...currentStoredSuites.map(({ suite, lcov }) => ({ suite, lcov, source: "store" as const })),
+    ...freshSuites.map(({ suite, lcov }) => ({ suite, lcov, source: "fresh" as const })),
+  ];
+  return {
+    baseline: storedSuites.length === 0 ? null : mergeLcov(storedSuites.map(({ lcov }) => lcov)),
+    reports: currentSuites.map(({ lcov }) => lcov),
+    suiteSources: currentSuites,
+    parsedSources: currentSuites.map(({ suite, source, lcov }) => ({
+      name: `suite '${suite}' (${source})`,
+      lcov,
+    })),
+  };
+}
 
 export async function main(argv: string[]): Promise<number> {
   if (argv.length === 1 && (argv[0] === "--help" || argv[0] === "-h")) {
@@ -98,6 +176,12 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     warnings: [],
   });
 
+  try {
+    validateCheckArgs(args);
+  } catch (err) {
+    return emptyEvaluation(2, `invalid check configuration: ${err}`);
+  }
+
   let rules;
   try {
     rules = withIgnoredPaths(loadRules(args.rules), args.ignorePaths);
@@ -113,45 +197,59 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
   const reports: LcovData[] = [];
   const suiteSources: SuiteSource[] = [];
   const parsedSources: { name: string; lcov: LcovData }[] = [];
+  const activeSuiteMode = (args.activeSuites?.length ?? 0) > 0;
+  let baseline: LcovData | null = null;
 
-  if (args.store !== null) {
-    const suites = await args.store.list();
-    for (const suite of suites) {
-      if (suite === args.suite) continue;
-      const buf = await args.store.get(suite, { branch });
-      if (buf !== null) {
-        const lcov = parseLcov(buf.toString("utf8"), stripPrefixes);
-        reports.push(lcov);
-        suiteSources.push({ suite, source: "store", lcov });
-        parsedSources.push({ name: `suite '${suite}'`, lcov });
+  if (activeSuiteMode) {
+    try {
+      const loaded = await loadActiveSuiteCoverage(args, branch, stripPrefixes);
+      reports.push(...loaded.reports);
+      suiteSources.push(...loaded.suiteSources);
+      parsedSources.push(...loaded.parsedSources);
+      baseline = loaded.baseline;
+    } catch (err) {
+      return emptyEvaluation(2, `failed to load multi-suite coverage: ${err}`);
+    }
+  } else {
+    if (args.store !== null) {
+      const suites = await args.store.list();
+      for (const suite of suites) {
+        if (suite === args.suite) continue;
+        const buf = await args.store.get(suite, { branch });
+        if (buf !== null) {
+          const lcov = parseLcov(buf.toString("utf8"), stripPrefixes);
+          reports.push(lcov);
+          suiteSources.push({ suite, source: "store", lcov });
+          parsedSources.push({ name: `suite '${suite}'`, lcov });
+        }
       }
     }
-  }
 
-  const lcovFiles = collectLcovFiles(args.artifacts);
-  const freshLcovs: LcovData[] = [];
-  for (const f of lcovFiles) {
-    const lcov = parseLcov(readFileSync(f, "utf8"), stripPrefixes);
-    freshLcovs.push(lcov);
-    if (!(args.aggregateArtifacts ?? false)) {
-      reports.push(lcov);
-      parsedSources.push({ name: `file '${f}'`, lcov });
+    const lcovFiles = collectLcovFiles(args.artifacts);
+    const freshLcovs: LcovData[] = [];
+    for (const f of lcovFiles) {
+      const lcov = parseLcov(readFileSync(f, "utf8"), stripPrefixes);
+      freshLcovs.push(lcov);
+      if (!(args.aggregateArtifacts ?? false)) {
+        reports.push(lcov);
+        parsedSources.push({ name: `file '${f}'`, lcov });
+      }
     }
-  }
-  if (freshLcovs.length > 0) {
-    const freshMerged = mergeLcov(freshLcovs);
-    if (args.aggregateArtifacts ?? false) {
-      reports.push(freshMerged);
-      parsedSources.push({
-        name: `aggregated artifacts under '${args.artifacts}'`,
+    if (freshLcovs.length > 0) {
+      const freshMerged = mergeLcov(freshLcovs);
+      if (args.aggregateArtifacts ?? false) {
+        reports.push(freshMerged);
+        parsedSources.push({
+          name: `aggregated artifacts under '${args.artifacts}'`,
+          lcov: freshMerged,
+        });
+      }
+      suiteSources.push({
+        suite: args.suite ?? "(current)",
+        source: "fresh",
         lcov: freshMerged,
       });
     }
-    suiteSources.push({
-      suite: args.suite ?? "(current)",
-      source: "fresh",
-      lcov: freshMerged,
-    });
   }
 
   if (reports.length === 0) {
@@ -165,35 +263,36 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
 
   const lcov = mergeLcov(reports);
 
-  let diff;
+  let diff: DiffLines = new Map();
   let diffContent: DiffLineContent | null = null;
-  try {
-    if (args.annotateSource) {
-      diffContent = await getChangedLineContent(args.base, args.head);
-      diff = new Map(
-        [...diffContent].map(([f, m]) => [f, new Set(m.keys())] as [string, Set<number>]),
-      );
-    } else {
-      diff = await getChangedLines(args.base, args.head);
+  if (!(args.dropOnly ?? false) || (args.dropOnlyChangedAreas ?? false)) {
+    try {
+      if (args.annotateSource && !(args.dropOnly ?? false)) {
+        diffContent = await getChangedLineContent(args.base, args.head);
+        diff = new Map(
+          [...diffContent].map(([f, m]) => [f, new Set(m.keys())] as [string, Set<number>]),
+        );
+      } else {
+        diff = await getChangedLines(args.base, args.head);
+      }
+    } catch (err) {
+      return {
+        exitCode: 2,
+        result: null,
+        suiteSources,
+        runUrl,
+        branch,
+        diffContent: null,
+        skippedReason: `git diff failed: ${err}`,
+        parsedSources,
+        warnings: [],
+      };
     }
-  } catch (err) {
-    return {
-      exitCode: 2,
-      result: null,
-      suiteSources,
-      runUrl,
-      branch,
-      diffContent: null,
-      skippedReason: `git diff failed: ${err}`,
-      parsedSources,
-      warnings: [],
-    };
   }
 
-  const warnings = nonContributingWarnings(parsedSources, diff);
+  const warnings = args.dropOnly ? [] : nonContributingWarnings(parsedSources, diff);
 
-  let baseline: LcovData | null = null;
-  if (args.store !== null) {
+  if (!activeSuiteMode && args.store !== null) {
     try {
       const suites = await args.store.list();
       const baselineReports = (
@@ -212,7 +311,9 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     }
   }
 
-  const { buckets, informational } = computePatchCoverage(diff, lcov, rules);
+  const { buckets, informational } = args.dropOnly
+    ? { buckets: [], informational: [] }
+    : computePatchCoverage(diff, lcov, rules);
   const changedRules =
     (args.dropOnlyChangedAreas ?? false) ? buildChangedRules(diff, rules) : undefined;
   const drops = computeCoverageDrop(lcov, baseline, rules, changedRules);
@@ -254,7 +355,10 @@ export async function runCheck(args: CheckArgs): Promise<number> {
   const passed = result.passed;
 
   if (args.json) writeJson(args.json, check);
-  if (!jsonToStdout) printHumanResult(result, diffContent);
+  if (!jsonToStdout) {
+    if (args.dropOnly) printDropOutput(result.drops);
+    else printHumanResult(result, diffContent);
+  }
 
   const summaryFile =
     args.summaryFile !== undefined

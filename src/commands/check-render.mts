@@ -15,6 +15,7 @@ Options:
   --store-s3 <bucket[/prefix]>   S3 suite store
   --branch <name>                Branch pointer to follow when reading from the store (default: main)
   --suite <name>                 Name of the current suite
+  --active-suite <name>          Active suite in a multi-suite overlay (repeatable)
   --strip-prefix <prefix>        Extra path prefix to strip from LCOV SF: lines (repeatable)
   --pr <number>                  Pull request number for sticky comment
   --repo <owner/repo>            Repository for sticky comment (default: $GITHUB_REPOSITORY)
@@ -23,6 +24,7 @@ Options:
   --annotate-source              Print trimmed source text for each uncovered line
   --advisory                     Exit 0 even on coverage shortfall
   --drop-only-changed-areas      Restrict no_coverage_drop to changed rule areas
+  --drop-only                    Evaluate and print only no_coverage_drop rules
   --require-artifact <relpath>   Fail if this path is absent under --artifacts (repeatable)
   -h, --help                     Show this help`;
 }

@@ -14,6 +14,8 @@ export type CheckArgs = {
   stripPrefixes: string[];
   store: SuiteStore | null;
   suite: string | null;
+  /** Active suite manifest for multi-suite fresh-over-stored overlays. */
+  activeSuites?: string[];
   /** Branch used to resolve baseline from the store. Default: "main". */
   branch?: string;
   gh?: GhRunner;
@@ -25,6 +27,8 @@ export type CheckArgs = {
   advisory?: boolean;
   /** Apply no_coverage_drop only to rules whose area has changed files in the diff. Default: false. */
   dropOnlyChangedAreas?: boolean;
+  /** Evaluate and render only no_coverage_drop rules. Default: false. */
+  dropOnly?: boolean;
   /** Relative paths under --artifacts that must exist before the check runs (repeatable). */
   requireArtifacts?: string[];
   /** Exit non-zero when no LCOV data is available instead of treating the check as skipped. */
@@ -35,10 +39,32 @@ export type CheckArgs = {
   ignorePaths?: string[];
 };
 
+type ParsedCheckArgs = Omit<CheckArgs, "store"> & { store: SuiteStore | null };
+
+function finalizeCheckArgs(
+  args: ParsedCheckArgs,
+  storeFs: string | null,
+  storeS3: string | null,
+): CheckArgs {
+  if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
+  if (args.suite !== null && args.activeSuites!.length > 0) {
+    throw new Error("--suite and --active-suite are mutually exclusive");
+  }
+
+  const repo = args.repo.trim();
+  args.repo = repo;
+  if (args.pr !== null && repo.length === 0) {
+    throw new Error("--repo is required when --pr is set (or define GITHUB_REPOSITORY)");
+  }
+  if (repo !== "") args.repo = assertValidRepo(repo);
+  args.store = makeStore({ fs: storeFs, s3: storeS3 });
+  return args;
+}
+
 export function parseCheckArgs(argv: string[]): CheckArgs {
   let storeFs: string | null = null;
   let storeS3: string | null = null;
-  const args: Omit<CheckArgs, "store"> & { store: SuiteStore | null } = {
+  const args: ParsedCheckArgs = {
     rules: ".coverage-rules.yml",
     artifacts: "./coverage-artifacts",
     base: "origin/main",
@@ -49,11 +75,13 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     stripPrefixes: [],
     store: null,
     suite: null,
+    activeSuites: [],
     branch: "main",
     summaryFile: process.env["GITHUB_STEP_SUMMARY"] ?? null,
     annotateSource: false,
     advisory: false,
     dropOnlyChangedAreas: false,
+    dropOnly: false,
     requireArtifacts: [],
     failOnEmpty: false,
     aggregateArtifacts: false,
@@ -98,6 +126,12 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
         args.suite = s;
         break;
       }
+      case "--active-suite": {
+        const s = val();
+        assertSafePathComponent(s, "suite");
+        args.activeSuites!.push(s);
+        break;
+      }
       case "--strip-prefix":
         args.stripPrefixes.push(val());
         break;
@@ -130,6 +164,9 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
       case "--drop-only-changed-areas":
         args.dropOnlyChangedAreas = true;
         break;
+      case "--drop-only":
+        args.dropOnly = true;
+        break;
       case "--require-artifact":
         args.requireArtifacts!.push(val());
         break;
@@ -147,16 +184,5 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     }
   }
 
-  if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
-
-  const repo = args.repo.trim();
-  args.repo = repo;
-  if (args.pr !== null && repo.length === 0) {
-    throw new Error("--repo is required when --pr is set (or define GITHUB_REPOSITORY)");
-  }
-  if (repo !== "") {
-    args.repo = assertValidRepo(repo);
-  }
-  args.store = makeStore({ fs: storeFs, s3: storeS3 });
-  return args;
+  return finalizeCheckArgs(args, storeFs, storeS3);
 }

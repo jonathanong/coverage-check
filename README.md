@@ -48,6 +48,31 @@ coverage-check check \
 
 The `--suite` flag on `check` tells the tool to use fresh `--artifacts` for the current suite and pull historical coverage from the store for all other suites. The `--branch` flag selects which branch pointer to follow when reading from the store.
 
+For fan-in jobs where several suites may run at once, pass the complete active-suite manifest and
+keep each fresh report under `coverage-<suite>/lcov.info`:
+
+```sh
+coverage-check check \
+  --rules .coverage-rules.yml \
+  --artifacts ./coverage-artifacts \
+  --store-s3 my-bucket/coverage-store \
+  --active-suite backend \
+  --active-suite frontend \
+  --drop-only \
+  --drop-only-changed-areas \
+  --branch main \
+  --base origin/main \
+  --head HEAD
+```
+
+In active-suite mode, stored coverage for each suite with a fresh report is replaced by that fresh
+report. Stored coverage is retained for active suites that did not run, while stored suites absent
+from the manifest are excluded. The baseline uses the stored versions of all available active
+suites. Fresh suites are always included in current coverage, including newly introduced suites
+that are not yet present in the manifest or store. `--drop-only` returns and prints only
+`no_coverage_drop` results; it skips patch-coverage buckets and does not read the Git diff unless
+`--drop-only-changed-areas` is also set.
+
 **S3 key layout:**
 
 ```text
@@ -294,6 +319,7 @@ Run `coverage-check --help` or `coverage-check check --help` to print the availa
 | `--store-s3`                | —                      | S3 suite store spec: `<bucket>[/<prefix>]`                                                                 |
 | `--branch`                  | `"main"`               | Branch pointer to follow when reading from the store                                                       |
 | `--suite`                   | —                      | Name of the current suite (no `/` or `\\`); fresh artifacts override this suite in the store               |
+| `--active-suite`            | —                      | Active suite for a multi-suite fresh-over-stored overlay (repeatable; mutually exclusive with `--suite`)   |
 | `--strip-prefix`            | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                                              |
 | `--pr`                      | —                      | Pull request number for sticky comment                                                                     |
 | `--repo`                    | `$GITHUB_REPOSITORY`   | `owner/repo` for sticky comment                                                                            |
@@ -302,6 +328,7 @@ Run `coverage-check --help` or `coverage-check check --help` to print the availa
 | `--annotate-source`         | —                      | Print the trimmed source text of each uncovered line in stdout (does not alter PR comment or step summary) |
 | `--advisory`                | —                      | Exit `0` even on shortfall; still prints, writes JSON, and posts PR comment                                |
 | `--drop-only-changed-areas` | —                      | Restrict `no_coverage_drop` to rule areas that have ≥1 changed file; others are reported as skipped        |
+| `--drop-only`               | —                      | Evaluate and print only `no_coverage_drop` results                                                         |
 | `--require-artifact`        | —                      | Fail (exit `2`) if this relative path is absent under `--artifacts` (repeatable)                           |
 | `--fail-on-empty`           | —                      | Exit `1` when no coverage data is found instead of skipping                                                |
 | `--aggregate-artifacts`     | —                      | Treat fresh LCOV files as one source for diagnostics and summaries                                         |
