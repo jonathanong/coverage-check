@@ -39,10 +39,32 @@ export type CheckArgs = {
   ignorePaths?: string[];
 };
 
+type ParsedCheckArgs = Omit<CheckArgs, "store"> & { store: SuiteStore | null };
+
+function finalizeCheckArgs(
+  args: ParsedCheckArgs,
+  storeFs: string | null,
+  storeS3: string | null,
+): CheckArgs {
+  if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
+  if (args.suite !== null && args.activeSuites!.length > 0) {
+    throw new Error("--suite and --active-suite are mutually exclusive");
+  }
+
+  const repo = args.repo.trim();
+  args.repo = repo;
+  if (args.pr !== null && repo.length === 0) {
+    throw new Error("--repo is required when --pr is set (or define GITHUB_REPOSITORY)");
+  }
+  if (repo !== "") args.repo = assertValidRepo(repo);
+  args.store = makeStore({ fs: storeFs, s3: storeS3 });
+  return args;
+}
+
 export function parseCheckArgs(argv: string[]): CheckArgs {
   let storeFs: string | null = null;
   let storeS3: string | null = null;
-  const args: Omit<CheckArgs, "store"> & { store: SuiteStore | null } = {
+  const args: ParsedCheckArgs = {
     rules: ".coverage-rules.yml",
     artifacts: "./coverage-artifacts",
     base: "origin/main",
@@ -162,19 +184,5 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     }
   }
 
-  if (storeFs && storeS3) throw new Error("--store-fs and --store-s3 are mutually exclusive");
-  if (args.suite !== null && args.activeSuites!.length > 0) {
-    throw new Error("--suite and --active-suite are mutually exclusive");
-  }
-
-  const repo = args.repo.trim();
-  args.repo = repo;
-  if (args.pr !== null && repo.length === 0) {
-    throw new Error("--repo is required when --pr is set (or define GITHUB_REPOSITORY)");
-  }
-  if (repo !== "") {
-    args.repo = assertValidRepo(repo);
-  }
-  args.store = makeStore({ fs: storeFs, s3: storeS3 });
-  return args;
+  return finalizeCheckArgs(args, storeFs, storeS3);
 }

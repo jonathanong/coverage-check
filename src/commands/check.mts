@@ -25,8 +25,7 @@ import {
 import type { CheckArgs } from "./check-args.mts";
 import type { CheckRunResult } from "./check-result.mts";
 import type { SuiteSource } from "../step-summary.mts";
-import type { DiffLineContent, DiffLines, LcovData } from "../types.mts";
-import type { CoverageCheckResult } from "../types.mts";
+import type { CoverageCheckResult, DiffLineContent, DiffLines, LcovData } from "../types.mts";
 export type { CheckArgs } from "./check-args.mts";
 export type { CheckRunResult } from "./check-result.mts";
 
