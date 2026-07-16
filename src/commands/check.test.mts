@@ -16,6 +16,7 @@ describe("main argument validation", () => {
       expect(output).toContain("coverage-check check");
       expect(output).toContain("--advisory");
       expect(output).toContain("--json <path|->");
+      expect(output).toContain("--no-summary-file");
     } finally {
       writeSpy.mockRestore();
     }
@@ -97,6 +98,17 @@ describe("main argument validation", () => {
     } finally {
       if (saved !== undefined) process.env["GITHUB_REPOSITORY"] = saved;
       else delete process.env["GITHUB_REPOSITORY"];
+    }
+  });
+
+  it("--no-summary-file overrides GITHUB_STEP_SUMMARY", () => {
+    const saved = process.env["GITHUB_STEP_SUMMARY"];
+    process.env["GITHUB_STEP_SUMMARY"] = "/github/file_commands/summary.md";
+    try {
+      expect(parseCheckArgs(["--no-summary-file"]).summaryFile).toBeNull();
+    } finally {
+      if (saved !== undefined) process.env["GITHUB_STEP_SUMMARY"] = saved;
+      else delete process.env["GITHUB_STEP_SUMMARY"];
     }
   });
 
@@ -1124,7 +1136,7 @@ describe("with a real git repo and a known diff", () => {
     expect(content).toContain("Coverage summary");
   });
 
-  it("does not write step summary when summaryFile is null even if env var is set", async () => {
+  it("--no-summary-file does not write a step summary when the env var is set", async () => {
     const summaryFile = join(tmpDir, "should-not-exist.md");
     writeFileSync(
       join(artifactsDir, "lcov.info"),
@@ -1133,19 +1145,19 @@ describe("with a real git repo and a known diff", () => {
     const origEnv = process.env["GITHUB_STEP_SUMMARY"];
     process.env["GITHUB_STEP_SUMMARY"] = summaryFile;
     try {
-      await runCheck({
-        rules: rulesPath,
-        artifacts: artifactsDir,
-        base: baseSha,
-        head: headSha,
-        pr: null,
-        repo: "",
-        json: null,
-        stripPrefixes: [],
-        store: null,
-        suite: "backend",
-        summaryFile: null,
-      });
+      expect(
+        await main([
+          "--rules",
+          rulesPath,
+          "--artifacts",
+          artifactsDir,
+          "--base",
+          baseSha,
+          "--head",
+          headSha,
+          "--no-summary-file",
+        ]),
+      ).toBe(0);
     } finally {
       if (origEnv === undefined) delete process.env["GITHUB_STEP_SUMMARY"];
       else process.env["GITHUB_STEP_SUMMARY"] = origEnv;

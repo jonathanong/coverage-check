@@ -111,7 +111,7 @@ coverage-check check \
 
 ### GitHub Actions step summary
 
-When `$GITHUB_STEP_SUMMARY` is set, a per-suite totals and per-rule patch-coverage table is appended to the job summary automatically.
+When `$GITHUB_STEP_SUMMARY` is set, a per-suite totals and per-rule patch-coverage table is appended to the job summary automatically. Pass `--no-summary-file` to suppress this output without changing the environment variable.
 
 ### Diagnosing uncovered lines
 
@@ -298,6 +298,7 @@ Run `coverage-check --help` or `coverage-check check --help` to print the availa
 | `--pr`                      | —                      | Pull request number for sticky comment                                                                     |
 | `--repo`                    | `$GITHUB_REPOSITORY`   | `owner/repo` for sticky comment                                                                            |
 | `--json`                    | —                      | Write JSON result to this path; use `-` for JSON-only stdout                                               |
+| `--no-summary-file`         | —                      | Do not write the GitHub Actions step summary, even when `GITHUB_STEP_SUMMARY` is set                       |
 | `--annotate-source`         | —                      | Print the trimmed source text of each uncovered line in stdout (does not alter PR comment or step summary) |
 | `--advisory`                | —                      | Exit `0` even on shortfall; still prints, writes JSON, and posts PR comment                                |
 | `--drop-only-changed-areas` | —                      | Restrict `no_coverage_drop` to rule areas that have ≥1 changed file; others are reported as skipped        |
