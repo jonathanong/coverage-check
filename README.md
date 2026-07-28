@@ -369,6 +369,72 @@ Hit counts are summed across all inputs. Function (`FN`/`FNDA`) and branch (`BRD
 
 When `--sha` and `--branch` are both provided, `store-put` writes a SHA-addressed payload and advances the branch pointer only if the incoming timestamp is not older than the current pointer. Omitting both flags preserves the legacy `<suite>/lcov.info` storage layout.
 
+## Provenance-verified fan-in
+
+Coverage from different revisions or collector configurations must not be merged: LCOV line
+coordinates are meaningful only for the source tree that produced them. The programmatic
+provenance API stamps each `lcov.info` with a versioned `coverage-manifest.json` containing its
+repository, revision, suite identity, collector configuration, LCOV digest, and a digest of the
+represented source files.
+
+Stamp immediately after collection and before uploading the pair:
+
+```ts
+import { stampCoverageManifest } from "coverage-check";
+
+stampCoverageManifest({
+  root: process.cwd(),
+  lcovPath: "coverage/lcov.info",
+  manifestPath: "coverage/coverage-manifest.json",
+  descriptor: {
+    suite: "web",
+    projects: ["unit", "integration"],
+    collector: { name: "vitest", settings: { provider: "v8" } },
+  },
+  collectorVersion: "4.1.6",
+  repository: "example/project",
+  revision: process.env.GITHUB_SHA!,
+  run: { id: process.env.GITHUB_RUN_ID!, attempt: Number(process.env.GITHUB_RUN_ATTEMPT) },
+});
+```
+
+Use `prepareProvenanceArtifacts` before merging downloads from primary and fallback transports:
+
+```ts
+import { prepareProvenanceArtifacts } from "coverage-check";
+
+prepareProvenanceArtifacts({
+  root: process.cwd(),
+  sources: [
+    { name: "primary", directory: "./coverage-primary" },
+    { name: "fallback", directory: "./coverage-fallback" },
+  ],
+  outputDirectory: "./coverage-artifacts",
+  expectedSuites: [
+    {
+      producer: "test-web",
+      descriptor: {
+        suite: "web",
+        projects: ["unit", "integration"],
+        collector: { name: "vitest", settings: { provider: "v8" } },
+      },
+      expectedCollectorVersion: "4.1.6",
+    },
+  ],
+  repository: "example/project",
+  revision: process.env.GITHUB_SHA!,
+  expectedRun: {
+    id: process.env.GITHUB_RUN_ID!,
+    currentAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+  },
+});
+```
+
+Every input is verified before output is replaced. One valid source may recover from an absent or
+invalid transport; multiple valid sources must contain byte-identical LCOV and manifest files.
+Unexpected suites, incomplete pairs, conflicting copies, and source-tree mismatches fail closed.
+The existing `prepare-artifacts` command remains available for unsigned legacy layouts.
+
 ## Programmatic API
 
 ```ts
@@ -379,6 +445,9 @@ import {
   runMerge,
   runStorePut,
   prepareCoverageArtifacts,
+  prepareProvenanceArtifacts,
+  stampCoverageManifest,
+  validateCoverageManifest,
   collapseRanges,
   collectLcovFiles,
   zeroThresholdGlobs,
