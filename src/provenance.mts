@@ -11,16 +11,14 @@ import {
 } from "./provenance-integrity.mts";
 import { parseCoverageManifest } from "./provenance-schema.mts";
 import {
-  COVERAGE_MANIFEST_FILENAME,
   SOURCE_ROOT_ALGORITHM,
   type CoverageManifest,
   type StampCoverageManifestOptions,
   type ValidateCoverageManifestOptions,
 } from "./provenance-types.mts";
 
+export { COVERAGE_MANIFEST_FILENAME, SOURCE_ROOT_ALGORITHM } from "./provenance-types.mts";
 export {
-  COVERAGE_MANIFEST_FILENAME,
-  SOURCE_ROOT_ALGORITHM,
   parseCoverageManifest,
   type CoverageManifest,
   type StampCoverageManifestOptions,
@@ -36,7 +34,7 @@ function validateDescriptor(
   collectorVersion?: string,
 ): void {
   if (!descriptor || typeof descriptor !== "object") {
-    throw new Error("Coverage descriptor must be an object");
+    throw new TypeError("Coverage descriptor must be an object");
   }
   if (typeof descriptor.suite !== "string") {
     throw new Error("Coverage suite must be a string");
@@ -153,10 +151,8 @@ export function validateCoverageManifestBytes(
   if (options.expectedRun === null) {
     if (manifest.run !== null) throw new Error("Coverage manifest is not a local run");
   } else if (
-    !manifest.run ||
-    manifest.run.id !== options.expectedRun.id ||
-    manifest.run.attempt < 1 ||
-    manifest.run.attempt > options.expectedRun.currentAttempt
+    manifest.run?.id !== options.expectedRun.id ||
+    (manifest.run?.attempt ?? Number.POSITIVE_INFINITY) > options.expectedRun.currentAttempt
   ) {
     throw new Error("Coverage manifest run does not match the current CI run");
   }

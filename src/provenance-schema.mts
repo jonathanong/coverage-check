@@ -10,7 +10,9 @@ function exactObject(value: unknown, keys: readonly string[]): value is Record<s
     value &&
     typeof value === "object" &&
     !Array.isArray(value) &&
-    Object.keys(value).toSorted().join("\0") === keys.toSorted().join("\0"),
+    Object.keys(value)
+      .toSorted((left, right) => left.localeCompare(right))
+      .join("\0") === keys.toSorted((left, right) => left.localeCompare(right)).join("\0"),
   );
 }
 
@@ -31,7 +33,9 @@ export function parseCoverageManifest(raw: unknown): CoverageManifest {
     "version",
   ];
   if (
-    Object.keys(manifest).toSorted().join("\0") !== exactKeys.toSorted().join("\0") ||
+    Object.keys(manifest)
+      .toSorted((left, right) => left.localeCompare(right))
+      .join("\0") !== exactKeys.toSorted((left, right) => left.localeCompare(right)).join("\0") ||
     manifest.version !== 1
   ) {
     throw new Error("Coverage manifest has an unsupported schema");

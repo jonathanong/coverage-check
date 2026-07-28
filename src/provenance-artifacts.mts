@@ -51,11 +51,14 @@ function inspectSource(
 
     const pairDirectory = join(source.directory, entry.name);
     const entries = readdirSync(pairDirectory, { withFileTypes: true });
-    const names = entries.map((candidate) => candidate.name).toSorted();
+    const names = entries
+      .map((candidate) => candidate.name)
+      .toSorted((left, right) => left.localeCompare(right));
     const expectedNames = [COVERAGE_MANIFEST_FILENAME, "lcov.info"];
     if (
       entries.some((candidate) => !candidate.isFile()) ||
-      names.join("\0") !== expectedNames.toSorted().join("\0")
+      names.join("\0") !==
+        expectedNames.toSorted((left, right) => left.localeCompare(right)).join("\0")
     ) {
       candidates.set(suite, {
         error: `${source.name} coverage pair for ${suite} must contain exactly ${expectedNames.join(", ")}`,
