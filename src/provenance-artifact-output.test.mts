@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -60,6 +68,31 @@ describe("provenance artifact output replacement", () => {
       }),
     ).not.toThrow();
     expect(readFileSync(join(output, "coverage-web", "lcov.info"), "utf8")).toBe("new");
+  });
+
+  it("rejects unsafe suite paths before changing output", () => {
+    expect(() => replaceProvenanceOutput(output, [{ ...pair, suite: "../escape" }])).toThrow(
+      "safe path component",
+    );
+    expect(readFileSync(join(output, "sentinel"), "utf8")).toBe("preserved");
+  });
+
+  it("commits pair files and removes temporary directories", () => {
+    const lcovPath = join(root, "lcov.info");
+    const manifestPath = join(root, "coverage-manifest.json");
+    writeFileSync(lcovPath, "old-lcov");
+    writeFileSync(manifestPath, "old-manifest");
+
+    replaceCoveragePairFiles(
+      lcovPath,
+      manifestPath,
+      Buffer.from("new-lcov"),
+      Buffer.from("new-manifest"),
+    );
+
+    expect(readFileSync(lcovPath, "utf8")).toBe("new-lcov");
+    expect(readFileSync(manifestPath, "utf8")).toBe("new-manifest");
+    expect(readdirSync(root).filter((name) => name.startsWith(".coverage-pair-"))).toEqual([]);
   });
 
   it("rolls back both pair files when staging or commit fails", () => {

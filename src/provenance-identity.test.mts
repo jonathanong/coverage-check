@@ -88,6 +88,7 @@ describe("coverage provenance identity", () => {
     const invalidDescriptors = [
       null,
       { ...descriptor, suite: 42 },
+      { ...descriptor, projects: [] },
       { ...descriptor, projects: [42] },
       { ...descriptor, collector: { ...descriptor.collector, name: null } },
       { ...descriptor, collector: { ...descriptor.collector, settings: [] } },

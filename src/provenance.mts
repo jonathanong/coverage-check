@@ -12,6 +12,7 @@ import {
 import { parseCoverageManifest } from "./provenance-schema.mts";
 import {
   SOURCE_ROOT_ALGORITHM,
+  type CoverageArtifactDescriptor,
   type CoverageManifest,
   type StampCoverageManifestOptions,
   type ValidateCoverageManifestOptions,
@@ -20,6 +21,7 @@ import {
 export { COVERAGE_MANIFEST_FILENAME, SOURCE_ROOT_ALGORITHM } from "./provenance-types.mts";
 export {
   parseCoverageManifest,
+  type CoverageArtifactDescriptor,
   type CoverageManifest,
   type StampCoverageManifestOptions,
   type ValidateCoverageManifestOptions,
@@ -42,6 +44,7 @@ function validateDescriptor(
   validatePathComponent(descriptor.suite, "Coverage suite");
   if (
     !Array.isArray(descriptor.projects) ||
+    descriptor.projects.length === 0 ||
     descriptor.projects.some((project) => typeof project !== "string" || !project) ||
     !descriptor.collector ||
     typeof descriptor.collector !== "object" ||

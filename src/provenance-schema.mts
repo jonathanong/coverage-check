@@ -6,14 +6,10 @@ function positiveInteger(value: unknown): value is number {
 }
 
 function exactObject(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.keys(value)
-      .toSorted((left, right) => left.localeCompare(right))
-      .join("\0") === keys.toSorted((left, right) => left.localeCompare(right)).join("\0"),
-  );
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = Object.keys(value);
+  const expected = new Set(keys);
+  return actual.length === expected.size && actual.every((key) => expected.has(key));
 }
 
 export function parseCoverageManifest(raw: unknown): CoverageManifest {
@@ -32,12 +28,7 @@ export function parseCoverageManifest(raw: unknown): CoverageManifest {
     "suite",
     "version",
   ];
-  if (
-    Object.keys(manifest)
-      .toSorted((left, right) => left.localeCompare(right))
-      .join("\0") !== exactKeys.toSorted((left, right) => left.localeCompare(right)).join("\0") ||
-    manifest.version !== 1
-  ) {
+  if (!exactObject(manifest, exactKeys) || manifest.version !== 1) {
     throw new Error("Coverage manifest has an unsupported schema");
   }
   const collector = manifest.collector;
@@ -51,6 +42,7 @@ export function parseCoverageManifest(raw: unknown): CoverageManifest {
     typeof manifest.suite !== "string" ||
     !manifest.suite ||
     !Array.isArray(manifest.projects) ||
+    manifest.projects.length === 0 ||
     manifest.projects.some((project) => typeof project !== "string" || !project) ||
     typeof manifest.revision !== "string" ||
     !/^[0-9a-f]{40}$/.test(manifest.revision) ||

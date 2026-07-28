@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { validatePathComponent } from "./provenance-integrity.mts";
 import { COVERAGE_MANIFEST_FILENAME } from "./provenance-types.mts";
 
 type ProvenanceOutputPair = {
@@ -50,11 +52,12 @@ export function replaceProvenanceOutput(
   selected: readonly ProvenanceOutputPair[],
   overrides: ProvenanceOutputOperationOverrides = {},
 ): void {
+  for (const pair of selected) validatePathComponent(pair.suite, "Coverage suite");
   const operations = createOperations(overrides);
   const parent = dirname(outputDirectory);
+  const backup = join(parent, `.${basename(outputDirectory)}-backup-${randomUUID()}`);
   operations.mkdir(parent, true);
   const staging = operations.mkdtemp(join(parent, `.${basename(outputDirectory)}-staging-`));
-  const backup = join(parent, `.${basename(outputDirectory)}-backup-${process.pid}-${Date.now()}`);
   let movedExisting = false;
   let committed = false;
 

@@ -115,6 +115,18 @@ describe("coverage artifact provenance", () => {
     expect(() => parseCoverageManifest({ ...manifest, unexpected: true })).toThrow(
       "unsupported schema",
     );
+    const { collector, ...withoutCollector } = manifest;
+    expect(() => parseCoverageManifest({ ...withoutCollector, collectar: collector })).toThrow(
+      "unsupported schema",
+    );
+    expect(() => parseCoverageManifest({ ...manifest, projects: [] })).toThrow(
+      "unsupported schema",
+    );
+    for (const collectorValue of [null, "invalid", []]) {
+      expect(() => parseCoverageManifest({ ...manifest, collector: collectorValue })).toThrow(
+        "unsupported schema",
+      );
+    }
     expect(() =>
       parseCoverageManifest({
         ...manifest,
@@ -220,6 +232,16 @@ describe("coverage artifact provenance", () => {
       "TN:\nSF:src/example.mts\nDA:1,1\nend_of_record\nTN:\nSF:src/another.mts\nDA:1,1\nend_of_record\n",
     );
 
-    expect(() => stamp()).not.toThrow();
+    stamp();
+    const first = parseCoverageManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
+
+    writeFileSync(
+      lcovPath,
+      "TN:\nSF:src/another.mts\nDA:1,1\nend_of_record\nTN:\nSF:src/example.mts\nDA:1,1\nend_of_record\n",
+    );
+    stamp();
+    const second = parseCoverageManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
+
+    expect(second.sourceRoot.sha256).toBe(first.sourceRoot.sha256);
   });
 });
