@@ -118,7 +118,6 @@ export function replaceCoveragePairFiles(
   let backedUpLcov = false;
   let backedUpManifest = false;
   let committedLcov = false;
-  let committedManifest = false;
 
   try {
     operations.write(stagedLcov, lcov);
@@ -134,7 +133,6 @@ export function replaceCoveragePairFiles(
     operations.rename(stagedLcov, lcovPath);
     committedLcov = true;
     operations.rename(stagedManifest, manifestPath);
-    committedManifest = true;
   } catch (error) {
     const rollbackErrors: unknown[] = [];
     const rollback = (action: () => void) => {
@@ -145,7 +143,6 @@ export function replaceCoveragePairFiles(
       }
     };
     if (committedLcov) rollback(() => operations.remove(lcovPath));
-    if (committedManifest) rollback(() => operations.remove(manifestPath));
     if (backedUpLcov) rollback(() => operations.rename(backupLcov, lcovPath));
     if (backedUpManifest) rollback(() => operations.rename(backupManifest, manifestPath));
     rollback(() => operations.remove(staging));

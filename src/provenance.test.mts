@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -37,7 +37,9 @@ describe("coverage artifact provenance", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  function stamp(): void {
+  function stamp(
+    run: Parameters<typeof stampCoverageManifest>[0]["run"] = { id: "123", attempt: 2 },
+  ): void {
     stampCoverageManifest({
       root,
       lcovPath,
@@ -45,7 +47,7 @@ describe("coverage artifact provenance", () => {
       descriptor,
       repository: "example/repository",
       revision: "a".repeat(40),
-      run: { id: "123", attempt: 2 },
+      run,
       collectorVersion: "4.1.0",
     });
   }
@@ -146,6 +148,13 @@ describe("coverage artifact provenance", () => {
     ).not.toThrow();
   });
 
+  it("normalizes CRLF LCOV records", () => {
+    writeFileSync(lcovPath, "TN:\r\nSF:src/example.mts\r\nDA:1,1\r\nend_of_record\r\n");
+
+    expect(() => stamp()).not.toThrow();
+    expect(readFileSync(lcovPath, "utf8")).toBe("TN:\nSF:src/example.mts\nDA:1,1\nend_of_record\n");
+  });
+
   it("rejects empty LCOV and existing sources outside the repository root", () => {
     writeFileSync(lcovPath, "TN:\n");
     expect(() => stamp()).toThrow("at least one valid source");
@@ -159,6 +168,49 @@ describe("coverage artifact provenance", () => {
     } finally {
       rmSync(outsideRoot, { recursive: true, force: true });
     }
+  });
+
+  it("rejects symlink and directory LCOV sources", () => {
+    const invalidSource = join(root, "src", "invalid.mts");
+    symlinkSync(join(root, "src", "example.mts"), invalidSource);
+    writeFileSync(lcovPath, "TN:\nSF:src/invalid.mts\nDA:1,1\nend_of_record\n");
+    expect(() => stamp()).toThrow("must not be a symlink");
+
+    rmSync(invalidSource);
+    mkdirSync(invalidSource);
+    expect(() => stamp()).toThrow("not a regular file");
+  });
+
+  it("accepts a local manifest when a local run is expected", () => {
+    stamp(null);
+
+    expect(() =>
+      validateCoverageManifest({
+        root,
+        lcovPath,
+        manifestPath,
+        descriptor,
+        repository: "example/repository",
+        revision: "a".repeat(40),
+        expectedRun: null,
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects a local manifest when a CI run is expected", () => {
+    stamp(null);
+
+    expect(() =>
+      validateCoverageManifest({
+        root,
+        lcovPath,
+        manifestPath,
+        descriptor,
+        repository: "example/repository",
+        revision: "a".repeat(40),
+        expectedRun: { id: "123", currentAttempt: 2 },
+      }),
+    ).toThrow("current CI run");
   });
 
   it("hashes multiple represented sources in stable path order", () => {

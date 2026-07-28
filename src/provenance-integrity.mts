@@ -57,7 +57,8 @@ export function normalizeSources(root: string, rawLcov: string): NormalizedSourc
   let sourceLines = 0;
   const normalizedLcov = rawLcov
     .split("\n")
-    .map((line) => {
+    .map((rawLine) => {
+      const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
       if (!line.startsWith("SF:")) return line;
       sourceLines++;
       const rawPath = line.slice(3);

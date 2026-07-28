@@ -134,7 +134,50 @@ describe("provenance artifact fan-in", () => {
     expect(() => prepare()).toThrow("Unexpected primary coverage artifact entry");
   });
 
+  it("reports a missing pair without diagnostics when no source directories exist", () => {
+    rmSync(primary, { recursive: true });
+    rmSync(fallback, { recursive: true });
+
+    expect(() => prepare()).toThrow(
+      `Missing valid coverage artifact for test-web: coverage-web/lcov.info and ${COVERAGE_MANIFEST_FILENAME}`,
+    );
+  });
+
+  it("includes non-Error validation failures in missing-pair diagnostics", () => {
+    writePair(primary);
+    const throwingDescriptor = {
+      ...descriptor,
+      get projects(): string[] {
+        throw "descriptor exploded";
+      },
+    };
+
+    expect(() =>
+      prepareProvenanceArtifacts({
+        root,
+        sources: [{ name: "primary", directory: primary }],
+        outputDirectory: output,
+        expectedSuites: [{ producer: "test-web", descriptor: throwingDescriptor }],
+        repository: "example/repository",
+        revision: "a".repeat(40),
+        expectedRun: { id: "123", currentAttempt: 2 },
+      }),
+    ).toThrow("descriptor exploded");
+  });
+
   it("rejects duplicate expectations and unsafe source names", () => {
+    expect(() =>
+      prepareProvenanceArtifacts({
+        root,
+        sources: [],
+        outputDirectory: output,
+        expectedSuites: [{ producer: "one", descriptor }],
+        repository: "example/repository",
+        revision: "a".repeat(40),
+        expectedRun: null,
+      }),
+    ).toThrow("At least one coverage source");
+
     expect(() =>
       prepareProvenanceArtifacts({
         root,

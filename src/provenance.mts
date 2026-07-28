@@ -37,7 +37,7 @@ function validateDescriptor(
     throw new TypeError("Coverage descriptor must be an object");
   }
   if (typeof descriptor.suite !== "string") {
-    throw new Error("Coverage suite must be a string");
+    throw new TypeError("Coverage suite must be a string");
   }
   validatePathComponent(descriptor.suite, "Coverage suite");
   if (
@@ -150,11 +150,15 @@ export function validateCoverageManifestBytes(
   }
   if (options.expectedRun === null) {
     if (manifest.run !== null) throw new Error("Coverage manifest is not a local run");
-  } else if (
-    manifest.run?.id !== options.expectedRun.id ||
-    (manifest.run?.attempt ?? Number.POSITIVE_INFINITY) > options.expectedRun.currentAttempt
-  ) {
-    throw new Error("Coverage manifest run does not match the current CI run");
+  } else {
+    const runMatches =
+      manifest.run === null
+        ? false
+        : manifest.run.id === options.expectedRun.id &&
+          manifest.run.attempt <= options.expectedRun.currentAttempt;
+    if (!runMatches) {
+      throw new Error("Coverage manifest run does not match the current CI run");
+    }
   }
 
   const { normalizedLcov, sources } = normalizeSources(options.root, rawLcov.toString("utf8"));
