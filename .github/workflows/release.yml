@@ -42,7 +42,7 @@ jobs:
           ref: main
           token: ${{ secrets.RELEASE_TOKEN }}
 
-      - uses: pnpm/action-setup@v6.0.9
+      - uses: pnpm/action-setup@v6.0.10
         with:
           version: 11
           run_install: false
