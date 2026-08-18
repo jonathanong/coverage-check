@@ -11,6 +11,19 @@ export type ExpectedCoverageRun = {
   currentAttempt: number;
 };
 
+export type CoverageCollectorName = "vitest-v8" | "llvm-cov" | "coverlet";
+
+export type CoverageCollectorProfile = {
+  readonly name: CoverageCollectorName;
+  readonly settings: Readonly<Record<string, unknown>>;
+};
+
+export type CoverageSuiteDescriptor = {
+  readonly suite: string;
+  readonly projects: readonly string[];
+  readonly collector: CoverageCollectorProfile;
+};
+
 export type CoverageArtifactDescriptor = {
   suite: string;
   projects: readonly string[];

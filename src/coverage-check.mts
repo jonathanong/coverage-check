@@ -23,6 +23,12 @@ export {
   validateCoverageManifest,
 } from "./provenance.mts";
 export { prepareProvenanceArtifacts } from "./provenance-artifacts.mts";
+export {
+  expectedCollectorVersion,
+  transportFromSources,
+  validateSwiftCollectorVersions,
+} from "./provenance-policy.mts";
+export { pruneStaleEarlierAttemptSuites } from "./stale-attempt-prune.mts";
 
 export type { CheckArgs, CheckRunResult, EvaluatedCheck } from "./commands/check.mts";
 export type { StorePutArgs } from "./commands/store-put.mts";
@@ -44,12 +50,17 @@ export type {
 } from "./provenance-artifact-types.mts";
 export type {
   CoverageArtifactDescriptor,
+  CoverageCollectorName,
+  CoverageCollectorProfile,
   CoverageManifest,
   CoverageRun,
+  CoverageSuiteDescriptor,
   ExpectedCoverageRun,
   StampCoverageManifestOptions,
   ValidateCoverageManifestOptions,
 } from "./provenance-types.mts";
+export type { ExpectedCollectorVersionOptions } from "./provenance-policy.mts";
+export type { PruneStaleEarlierAttemptSuitesOptions } from "./stale-attempt-prune.mts";
 
 export type {
   CoverageCheckResult,

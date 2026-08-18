@@ -435,6 +435,35 @@ invalid transport; multiple valid sources must contain byte-identical LCOV and m
 Unexpected suites, incomplete pairs, conflicting copies, and source-tree mismatches fail closed.
 The existing `prepare-artifacts` command remains available for unsigned legacy layouts.
 
+Callers that fan in GitHub Actions artifacts across attempts can prune unexpected suites that
+are provably from an earlier attempt of the same run before `prepareProvenanceArtifacts` inspects
+the tree. Collector-version discovery and dual-source transport mapping are also generic:
+
+```ts
+import {
+  expectedCollectorVersion,
+  pruneStaleEarlierAttemptSuites,
+  type CoverageSuiteDescriptor,
+} from "coverage-check";
+
+if (expectedRun) {
+  pruneStaleEarlierAttemptSuites({
+    sources,
+    expectedSuites: expectedSuites.map(({ job, suite }) => ({ job, suite })),
+    run: expectedRun,
+  });
+}
+
+const expectedCollectorVersionFor = (descriptor: CoverageSuiteDescriptor) =>
+  expectedCollectorVersion(process.cwd(), descriptor, { coverletVersion: "6.0.4" });
+```
+
+`expectedCollectorVersion` reads the installed `vitest` package for `vitest-v8`, leaves
+`llvm-cov` unpinned, and requires the caller to pass the Coverlet pin. `transportFromSources`
+maps `["primary"]` / `["fallback"]` / both onto the corresponding result. Pass
+`validateSwiftCollectorVersions` as `validateSelection` when mixed-language suites must share
+one llvm-cov version.
+
 ## Programmatic API
 
 ```ts
@@ -446,6 +475,10 @@ import {
   runStorePut,
   prepareCoverageArtifacts,
   prepareProvenanceArtifacts,
+  expectedCollectorVersion,
+  pruneStaleEarlierAttemptSuites,
+  transportFromSources,
+  validateSwiftCollectorVersions,
   stampCoverageManifest,
   validateCoverageManifest,
   collapseRanges,
