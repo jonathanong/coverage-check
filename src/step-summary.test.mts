@@ -60,6 +60,19 @@ describe("buildSummaryMarkdown", () => {
     expect(md).toContain("❌ failed");
   });
 
+  it("lists missing coverage records", () => {
+    const md = buildSummaryMarkdown(
+      [],
+      {
+        ...failResult,
+        missingCoverage: [{ file: "backend/missing.ts", lines: [2, 3], rule: "backend/**" }],
+      },
+      "N/A",
+    );
+    expect(md).toContain("Missing coverage records");
+    expect(md).toContain("`backend/missing.ts`: 2, 3");
+  });
+
   it("lists suite names with source labels", () => {
     const md = buildSummaryMarkdown(
       [freshSource, storeSource],

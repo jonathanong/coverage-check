@@ -84,6 +84,29 @@ describe("loadRules", () => {
     expect(() => loadCoverageConfig(path)).toThrow("scope.version must be 1");
   });
 
+  it.each([
+    ["scope: null\nrules: []\n", "scope must be an object"],
+    [
+      "scope:\n  version: 1\n  analyzer: ruby\n  include: []\nrules: []\n",
+      "scope.analyzer must be 'javascript'",
+    ],
+    [
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: nope\nrules: []\n",
+      "scope.include must be an array of strings",
+    ],
+    [
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: []\n  ignored: [1]\nrules: []\n",
+      "scope.ignored must be an array of strings",
+    ],
+    [
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: []\n  supplemental: nope\nrules: []\n",
+      "scope.supplemental must be an array of strings",
+    ],
+  ])("rejects an invalid scope: %s", (yaml, message) => {
+    const path = write("rules.yml", yaml);
+    expect(() => loadCoverageConfig(path)).toThrow(message);
+  });
+
   it("throws when rules is not an array", () => {
     const path = write("rules.yml", "rules: not-an-array\n");
     expect(() => loadRules(path)).toThrow("expected a 'rules' array");

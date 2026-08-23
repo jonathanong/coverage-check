@@ -29,7 +29,7 @@ export function formatSupplementalLcov(files: SupplementalLineCoverage[]): strin
   return records.length === 0 ? "" : `${records.join("\n")}\n`;
 }
 
-class ScopedV8CoverageProvider extends V8CoverageProvider {
+export class ScopedV8CoverageProvider extends V8CoverageProvider {
   override async generateCoverage(context: { allTestsRun: boolean }) {
     const coverageMap = await super.generateCoverage(context);
     const outputPath = process.env["COVERAGE_CHECK_SUPPLEMENTAL_LCOV"];

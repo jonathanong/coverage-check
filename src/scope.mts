@@ -20,8 +20,8 @@ export function normalizeCoveragePath(value: string): string {
   return value
     .replace(/^file:\/\//, "")
     .replaceAll("\\", "/")
-    .replace(/^\.\//, "")
-    .replace(/^\/+/, "");
+    .replace(/^\/+/, "")
+    .replace(/^\.\//, "");
 }
 
 export function coverageDisposition(value: string, scope: CoverageScope): CoverageDisposition {

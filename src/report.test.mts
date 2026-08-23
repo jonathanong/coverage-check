@@ -78,6 +78,20 @@ describe("renderFailureComment", () => {
     expect(comment).toContain("L11-12");
   });
 
+  it("includes missing coverage records", () => {
+    const comment = renderFailureComment(
+      {
+        ...result,
+        missingCoverage: [{ file: "backend/missing.ts", lines: [2, 3], rule: "backend/**" }],
+      },
+      "N/A",
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(comment).toContain("Missing coverage records");
+    expect(comment).toContain("backend/missing.ts");
+    expect(comment).toContain("L2-3");
+  });
+
   it("renders informational section when unmatched files have uncovered lines", () => {
     const resultWithInfo: CoverageCheckResult = {
       ...result,
