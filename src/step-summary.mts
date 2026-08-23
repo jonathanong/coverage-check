@@ -94,7 +94,7 @@ export function buildSummaryMarkdown(
   }
 
   const overall = result.passed ? "✅ passed" : "❌ failed";
-  const missingCoverage = result.missingCoverage ?? [];
+  const missingCoverage = result.missingCoverage;
   const missingSection =
     missingCoverage.length === 0
       ? ""

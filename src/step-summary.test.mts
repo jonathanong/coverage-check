@@ -11,6 +11,7 @@ const passResult: CoverageCheckResult = {
   drops: [],
   buckets: [{ rule: "backend/**", threshold: 90, coverable: 10, hit: 10, passed: true, files: [] }],
   informational: [],
+  missingCoverage: [],
 };
 
 const failResult: CoverageCheckResult = {
@@ -18,6 +19,7 @@ const failResult: CoverageCheckResult = {
   drops: [],
   buckets: [{ rule: "backend/**", threshold: 90, coverable: 10, hit: 8, passed: false, files: [] }],
   informational: [],
+  missingCoverage: [],
 };
 
 const freshSource: SuiteSource = {
@@ -127,6 +129,7 @@ describe("buildSummaryMarkdown", () => {
         { rule: "backend/**", threshold: 90, coverable: 0, hit: 0, passed: false, files: [] },
       ],
       informational: [],
+      missingCoverage: [],
     };
     const md = buildSummaryMarkdown([], noCoverableResult, "N/A");
     expect(md).toContain("—");
@@ -143,6 +146,7 @@ describe("buildSummaryMarkdown", () => {
       drops: [],
       buckets: [],
       informational: [],
+      missingCoverage: [],
     };
     const md = buildSummaryMarkdown([], emptyResult, "N/A");
     expect(md).toContain("| — | — | — | — |");
@@ -173,6 +177,7 @@ describe("buildSummaryMarkdown", () => {
         { rule: "back|`end/**", threshold: 90, coverable: 10, hit: 10, passed: true, files: [] },
       ],
       informational: [],
+      missingCoverage: [],
     };
     const md = buildSummaryMarkdown([pipeSource], pipeResult, "N/A", "feat|`branch");
     expect(md).toContain("`` back\\|`end ``");

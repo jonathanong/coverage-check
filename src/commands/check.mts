@@ -475,7 +475,7 @@ function writeJson(path: string, check: CheckRunResult): void {
 function printHumanResult(result: CoverageCheckResult, diffContent: DiffLineContent | null): void {
   if (!result.passed) {
     stdout("\ncoverage-check: FAILED\n");
-    for (const missing of result.missingCoverage ?? []) {
+    for (const missing of result.missingCoverage) {
       /* c8 ignore next -- exact missing-coverage prose is covered by report and summary renderers */
       stdout(
         `  ${missing.file}: missing coverage record for ${collapseRanges(missing.lines)} (rule ${missing.rule})`,

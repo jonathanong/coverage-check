@@ -1283,6 +1283,21 @@ describe("with a real git repo and a known diff", () => {
       suite: null,
     });
     expect(check.skipped).toBe(true);
+    const required = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: headSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+      failOnEmpty: true,
+    });
+    expect(required.exitCode).toBe(1);
+    expect(required.error).toContain("no coverage data found");
   });
 
   it("returns a structured error when scoped source analysis fails", async () => {

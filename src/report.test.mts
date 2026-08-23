@@ -47,6 +47,7 @@ describe("renderFailureComment", () => {
       },
     ],
     informational: [],
+    missingCoverage: [],
   };
 
   it("includes the marker", () => {
@@ -124,6 +125,7 @@ describe("renderFailureComment", () => {
         },
       ],
       informational: [],
+      missingCoverage: [],
     };
     const comment = renderFailureComment(resultNoCoverable, "N/A", "2026-01-01T00:00:00.000Z");
     expect(comment).toContain("—");
@@ -152,6 +154,7 @@ describe("renderFailureComment", () => {
         },
       ],
       informational: [],
+      missingCoverage: [],
     };
     const comment = renderFailureComment(resultNoLines, "N/A", "2026-01-01T00:00:00.000Z");
     expect(comment).toContain("_No line-level data available_");

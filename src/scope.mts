@@ -51,8 +51,9 @@ export function executableLineNumbers(source: string, path: string): Set<number>
   });
   const lines = new Set<number>();
   eachMapping(new TraceMap(result.map), (mapping) => {
-    if (mapping.originalLine !== null) lines.add(mapping.originalLine);
+    lines.add(Number(mapping.originalLine));
   });
+  lines.delete(0);
   let declarationStart = 0;
   for (const [index, text] of source.split("\n").entries()) {
     const trimmed = text.trimStart();

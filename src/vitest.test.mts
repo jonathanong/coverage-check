@@ -8,9 +8,11 @@ import providerModule, { formatSupplementalLcov, isEmptyCoverageReport } from ".
 describe("Vitest provider helpers", () => {
   const originalConfig = process.env["COVERAGE_CHECK_CONFIG"];
   const originalOutput = process.env["COVERAGE_CHECK_SUPPLEMENTAL_LCOV"];
+  const originalCwd = process.cwd();
 
   afterEach(() => {
     vi.restoreAllMocks();
+    process.chdir(originalCwd);
     if (originalConfig === undefined) delete process.env["COVERAGE_CHECK_CONFIG"];
     else process.env["COVERAGE_CHECK_CONFIG"] = originalConfig;
     if (originalOutput === undefined) delete process.env["COVERAGE_CHECK_SUPPLEMENTAL_LCOV"];
@@ -89,7 +91,9 @@ describe("Vitest provider helpers", () => {
     const directory = mkdtempSync(join(tmpdir(), "coverage-check-vitest-"));
     const config = join(directory, "rules.yml");
     writeFileSync(config, "rules: []\n");
-    process.env["COVERAGE_CHECK_CONFIG"] = config;
+    process.chdir(directory);
+    delete process.env["COVERAGE_CHECK_CONFIG"];
+    writeFileSync(join(directory, ".coverage-rules.yml"), "rules: []\n");
     process.env["COVERAGE_CHECK_SUPPLEMENTAL_LCOV"] = join(directory, "lcov.info");
     vi.spyOn(V8CoverageProvider.prototype, "generateCoverage").mockResolvedValue({} as never);
     await expect(

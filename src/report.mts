@@ -95,7 +95,7 @@ export function renderFailureComment(
       : "";
 
   const regressionSection = renderRegressionSection(result.drops);
-  const missingCoverage = result.missingCoverage ?? [];
+  const missingCoverage = result.missingCoverage;
   const missingSection =
     missingCoverage.length === 0
       ? ""

@@ -71,7 +71,7 @@ export type CoverageCheckResult = {
   buckets: BucketResult[];
   drops: DropResult[];
   informational: FileCoverageResult[];
-  missingCoverage?: MissingCoverageResult[];
+  missingCoverage: MissingCoverageResult[];
   passed: boolean;
 };
 
