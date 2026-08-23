@@ -28,8 +28,8 @@ function hasExactEntries(
     entries.every((entry) => entry.isFile()) &&
     entries
       .map((entry) => entry.name)
-      .toSorted()
-      .join("\0") === expectedNames.toSorted().join("\0")
+      .toSorted((left, right) => left.localeCompare(right))
+      .join("\0") === expectedNames.toSorted((left, right) => left.localeCompare(right)).join("\0")
   );
 }
 
