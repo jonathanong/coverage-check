@@ -105,6 +105,11 @@ Snapshotting removes moving-baseline variance only. If the candidate coverage it
 integration-test runs, make those tests deterministic or configure an appropriate
 `max_coverage_drop` tolerance.
 
+The candidate LCOV files must still come from the same workflow run and revision being checked.
+Rerunning only the coverage gate may leave those files unavailable unless the workflow downloads
+artifacts from the earlier attempt. Rerun the coverage-producing jobs when necessary, and use
+`--require-artifact` to fail clearly instead of evaluating an incomplete candidate.
+
 **S3 key layout:**
 
 ```text
