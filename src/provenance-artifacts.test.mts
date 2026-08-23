@@ -33,11 +33,15 @@ describe("provenance artifact fan-in", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  function writePair(parent: string, revision = "a".repeat(40)): string {
+  function writePair(
+    parent: string,
+    revision = "a".repeat(40),
+    lcov = "TN:\nSF:src/example.mts\nDA:1,1\nend_of_record\n",
+  ): string {
     const pairDir = join(parent, "coverage-web");
     mkdirSync(pairDir, { recursive: true });
     const lcovPath = join(pairDir, "lcov.info");
-    writeFileSync(lcovPath, "TN:\nSF:src/example.mts\nDA:1,1\nend_of_record\n");
+    writeFileSync(lcovPath, lcov);
     stampCoverageManifest({
       root,
       lcovPath,
@@ -49,6 +53,25 @@ describe("provenance artifact fan-in", () => {
       collectorVersion: "4.1.0",
     });
     return pairDir;
+  }
+
+  function writeFlatPair(
+    parent: string,
+    revision = "a".repeat(40),
+    lcov = "TN:\nSF:src/example.mts\nDA:1,1\nend_of_record\n",
+  ): void {
+    const lcovPath = join(parent, "lcov.info");
+    writeFileSync(lcovPath, lcov);
+    stampCoverageManifest({
+      root,
+      lcovPath,
+      manifestPath: join(parent, COVERAGE_MANIFEST_FILENAME),
+      descriptor,
+      repository: "example/repository",
+      revision,
+      run: { id: "123", attempt: 1 },
+      collectorVersion: "4.1.0",
+    });
   }
 
   function prepare(
@@ -84,6 +107,60 @@ describe("provenance artifact fan-in", () => {
     expect(readFileSync(join(output, "coverage-web", "lcov.info"), "utf8")).toContain(
       "SF:src/example.mts",
     );
+  });
+
+  it("normalizes an exact flat pair when one suite is expected", () => {
+    writeFlatPair(primary);
+
+    expect(prepare().selected).toEqual([
+      expect.objectContaining({ suite: "web", sources: ["primary"] }),
+    ]);
+    expect(readFileSync(join(output, "coverage-web", "lcov.info"), "utf8")).toContain(
+      "SF:src/example.mts",
+    );
+  });
+
+  it("rejects flat pairs when multiple suites are expected", () => {
+    writeFlatPair(primary);
+    const toolingDescriptor = { ...descriptor, suite: "tooling" };
+
+    expect(() =>
+      prepareProvenanceArtifacts({
+        root,
+        sources: [{ name: "primary", directory: primary }],
+        outputDirectory: output,
+        expectedSuites: [
+          { producer: "test-web", descriptor, expectedCollectorVersion: "4.1.0" },
+          { producer: "test-tooling", descriptor: toolingDescriptor },
+        ],
+        repository: "example/repository",
+        revision: "a".repeat(40),
+        expectedRun: { id: "123", currentAttempt: 2 },
+      }),
+    ).toThrow("exactly one expected coverage suite");
+  });
+
+  it.each(["lcov.info", COVERAGE_MANIFEST_FILENAME])(
+    "rejects flat pairs missing %s",
+    (presentFile) => {
+      writeFileSync(join(primary, presentFile), "TN:\n");
+
+      expect(() => prepare()).toThrow("coverage pair must contain exactly");
+    },
+  );
+
+  it("rejects flat pairs that conflict with a named pair", () => {
+    writeFlatPair(primary);
+    writePair(fallback, "a".repeat(40), "TN:\nSF:src/example.mts\nDA:1,2\nend_of_record\n");
+
+    expect(() => prepare()).toThrow("conflicting");
+  });
+
+  it("rejects duplicate flat and named pairs in one source", () => {
+    writeFlatPair(primary);
+    writePair(primary);
+
+    expect(() => prepare()).toThrow("coverage pair must contain exactly");
   });
 
   it("uses a valid fallback when the primary pair is invalid", () => {

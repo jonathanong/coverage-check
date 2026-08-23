@@ -400,6 +400,12 @@ stampCoverageManifest({
 
 Use `prepareProvenanceArtifacts` before merging downloads from primary and fallback transports:
 
+Each source normally contains one `coverage-<suite>/` directory per expected suite, with both
+`lcov.info` and `coverage-manifest.json`. For a fan-in with exactly one expected suite, a source
+may instead contain that exact provenance pair at its root. Flat sources are rejected when multiple
+suites are expected, either side of the pair is missing, or any additional entry would make the
+source ambiguous. The prepared output is always normalized to `coverage-<suite>/` directories.
+
 ```ts
 import { prepareProvenanceArtifacts } from "coverage-check";
 
