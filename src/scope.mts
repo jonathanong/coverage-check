@@ -83,8 +83,8 @@ export function findMissingCoverage(
     let executable: Set<number>;
     try {
       executable = executableLineNumbers(readSource(file), file);
-    } catch {
-      continue;
+    } catch (error) {
+      throw new Error(`failed to analyze coverage scope for ${file}: ${String(error)}`);
     }
     const lines = [...changedLines].filter((line) => executable.has(line)).sort((a, b) => a - b);
     if (lines.length > 0) missing.push({ file, lines, rule: rule.paths });

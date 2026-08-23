@@ -1,4 +1,5 @@
 // oxlint-disable max-lines -- check evaluation and CLI rendering share one pipeline
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { relative } from "node:path";
 import { parseLcov } from "../lcov-parser.mts";
@@ -297,7 +298,7 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     }
   }
 
-  if (reports.length === 0) {
+  if (reports.length === 0 && scope === undefined) {
     return emptyEvaluation(
       args.failOnEmpty ? 1 : 0,
       args.failOnEmpty
@@ -306,7 +307,7 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     );
   }
 
-  const lcov = mergeLcov(reports);
+  const lcov: LcovData = reports.length === 0 ? new Map() : mergeLcov(reports);
 
   let diff: DiffLines = new Map();
   let diffContent: DiffLineContent | null = null;
@@ -361,9 +362,35 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     }
   }
 
-  const { buckets, informational, missingCoverage } = args.dropOnly
-    ? { buckets: [], informational: [], missingCoverage: [] }
-    : computePatchCoverage(diff, lcov, rules, scope);
+  let patchCoverage;
+  try {
+    patchCoverage = args.dropOnly
+      ? { buckets: [], informational: [], missingCoverage: [] }
+      : computePatchCoverage(diff, lcov, rules, scope, (file) =>
+          execFileSync("git", ["show", `${args.head}:${file}`], { encoding: "utf8" }),
+        );
+  } catch (error) {
+    return {
+      exitCode: 2,
+      result: null,
+      suiteSources,
+      runUrl,
+      branch,
+      diffContent,
+      skippedReason: `coverage scope analysis failed: ${String(error)}`,
+      parsedSources,
+      warnings,
+    };
+  }
+  const { buckets, informational, missingCoverage } = patchCoverage;
+  if (reports.length === 0 && missingCoverage.length === 0) {
+    return emptyEvaluation(
+      args.failOnEmpty ? 1 : 0,
+      args.failOnEmpty
+        ? `no coverage data found under ${args.artifacts}`
+        : "no coverage data found — skipping",
+    );
+  }
   const changedRules =
     (args.dropOnlyChangedAreas ?? false) ? buildChangedRules(diff, rules) : undefined;
   const drops = computeCoverageDrop(lcov, baseline, rules, changedRules);

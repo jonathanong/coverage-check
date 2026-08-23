@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   coverageDisposition,
@@ -74,12 +77,12 @@ describe("coverage scope", () => {
       { paths: "src/missing.ts", patch_coverage_min: 99 },
       { paths: "src/unreadable.ts", patch_coverage_min: 99 },
     ];
-    expect(
+    expect(() =>
       findMissingCoverage(diff, lcov, rules, scope, (path) => {
         if (path.endsWith("unreadable.ts")) throw new Error("missing");
         return "export const value = 1;";
       }),
-    ).toEqual([{ file: "src/missing.ts", lines: [1], rule: "src/missing.ts" }]);
+    ).toThrow("failed to analyze coverage scope for src/unreadable.ts");
   });
 
   it("reads source from disk by default", () => {
@@ -97,6 +100,3 @@ describe("coverage scope", () => {
     rmSync(directory, { recursive: true, force: true });
   });
 });
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";

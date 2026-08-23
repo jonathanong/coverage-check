@@ -1241,6 +1241,106 @@ describe("with a real git repo and a known diff", () => {
     ).toBe(0);
   });
 
+  it("fails closed for scoped executable changes when every LCOV report is absent", async () => {
+    writeFileSync(
+      rulesPath,
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['backend/**']\nrules:\n  - paths: backend/**\n    patch_coverage_min: 90\n",
+    );
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(check.exitCode).toBe(1);
+    expect(check.skipped).toBe(false);
+    expect(check.result?.missingCoverage).toEqual([
+      { file: "backend/foo.mts", lines: [2], rule: "backend/**" },
+    ]);
+  });
+
+  it("retains scoped no-coverage skip behavior when the diff has no executable additions", async () => {
+    writeFileSync(
+      rulesPath,
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['backend/**']\nrules:\n  - paths: backend/**\n    patch_coverage_min: 90\n",
+    );
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: headSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(check.skipped).toBe(true);
+  });
+
+  it("returns a structured error when scoped source analysis fails", async () => {
+    writeFileSync(
+      rulesPath,
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['backend/**']\nrules:\n  - paths: backend/**\n    patch_coverage_min: 90\n",
+    );
+    writeFileSync(join(repoDir, "backend/bad.mts"), "const = ;\n");
+    execSync('git add . && git commit -m "bad source"', {
+      cwd: repoDir,
+      shell: "/bin/sh",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "T",
+        GIT_AUTHOR_EMAIL: "t@t.com",
+        GIT_COMMITTER_NAME: "T",
+        GIT_COMMITTER_EMAIL: "t@t.com",
+      },
+    });
+    const invalidHead = execSync("git rev-parse HEAD", { cwd: repoDir, encoding: "utf8" }).trim();
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: headSha,
+      head: invalidHead,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(check.exitCode).toBe(2);
+    expect(check.error).toContain("coverage scope analysis failed");
+    expect(check.error).toContain("backend/bad.mts");
+  });
+
+  it("analyzes scoped source from the requested head rather than the worktree", async () => {
+    writeFileSync(
+      rulesPath,
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['backend/**']\nrules:\n  - paths: backend/**\n    patch_coverage_min: 90\n",
+    );
+    writeFileSync(join(repoDir, "backend/foo.mts"), "type Only = string;\n");
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(check.result?.missingCoverage?.[0]?.lines).toEqual([2]);
+  });
+
   it("returns 1 when new lines are uncovered and below threshold", async () => {
     writeFileSync(
       join(artifactsDir, "lcov.info"),

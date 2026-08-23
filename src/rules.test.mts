@@ -95,11 +95,15 @@ describe("loadRules", () => {
       "scope.include must be an array of strings",
     ],
     [
-      "scope:\n  version: 1\n  analyzer: javascript\n  include: []\n  ignored: [1]\nrules: []\n",
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: []\nrules: []\n",
+      "scope.include must contain at least one pattern",
+    ],
+    [
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['src/**']\n  ignored: [1]\nrules: []\n",
       "scope.ignored must be an array of strings",
     ],
     [
-      "scope:\n  version: 1\n  analyzer: javascript\n  include: []\n  supplemental: nope\nrules: []\n",
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['src/**']\n  supplemental: nope\nrules: []\n",
       "scope.supplemental must be an array of strings",
     ],
   ])("rejects an invalid scope: %s", (yaml, message) => {
