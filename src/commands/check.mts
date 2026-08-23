@@ -366,10 +366,10 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
   try {
     patchCoverage = args.dropOnly
       ? { buckets: [], informational: [], missingCoverage: [] }
-      : computePatchCoverage(diff, lcov, rules, scope, (file) =>
-          // NOSONAR -- matching the package's existing cross-platform Git runner; no shell is used.
-          execFileSync("git", ["show", `${args.head}:${file}`], { encoding: "utf8" }),
-        );
+      : computePatchCoverage(diff, lcov, rules, scope, (file) => {
+          // Git is intentionally PATH-resolved for cross-platform support; execFileSync does not use a shell.
+          return execFileSync("git", ["show", `${args.head}:${file}`], { encoding: "utf8" }); // NOSONAR
+        });
   } catch (error) {
     return {
       exitCode: 2,
