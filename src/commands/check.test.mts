@@ -1931,6 +1931,30 @@ describe("with a real git repo and a known diff", () => {
     expect(evaluated.skippedReason).toContain("does not support baseline snapshots");
   });
 
+  it("fails closed when a pinned payload is not valid LCOV", async () => {
+    const corruptStore = new FileSystemSuiteStore(join(tmpDir, "corrupt-snapshot-store"));
+    await corruptStore.put("backend", Buffer.from("not lcov"), {
+      sha: "corrupt",
+      branch: "main",
+    });
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: corruptStore,
+      suite: null,
+      activeSuites: ["backend"],
+      baselineSnapshotKey: "key",
+    });
+    expect(evaluated.exitCode).toBe(2);
+    expect(evaluated.skippedReason).toContain("malformed baseline snapshot LCOV");
+  });
+
   it("fails closed instead of pinning a mutable legacy suite", async () => {
     const legacyStore = new FileSystemSuiteStore(join(tmpDir, "legacy-snapshot-store"));
     await legacyStore.put("backend", Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n"));

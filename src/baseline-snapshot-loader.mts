@@ -80,6 +80,35 @@ export function formatBaselineSnapshotDiagnostic(loaded: LoadedBaselineSnapshot)
   return `coverage-check: baseline snapshot ${loaded.created ? "created" : "reused"} key=${JSON.stringify(loaded.snapshot.key)} branch=${JSON.stringify(loaded.snapshot.branch)} suites=[${entries}]`;
 }
 
+export function decodeBaselineSnapshotLcov(buffer: Buffer): string {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    throw new Error("baseline snapshot payload is not valid UTF-8");
+  }
+
+  let openRecord = false;
+  let recordCount = 0;
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (line.startsWith("SF:")) {
+      if (openRecord || line.length === 3) throw new Error("malformed baseline snapshot LCOV");
+      openRecord = true;
+    } else if (line.startsWith("DA:")) {
+      if (!openRecord || !/^DA:\d+,\d+(?:,.*)?$/.test(line)) {
+        throw new Error("malformed baseline snapshot LCOV");
+      }
+    } else if (line === "end_of_record") {
+      if (!openRecord) throw new Error("malformed baseline snapshot LCOV");
+      openRecord = false;
+      recordCount++;
+    }
+  }
+  if (openRecord || recordCount === 0) throw new Error("malformed baseline snapshot LCOV");
+  return text;
+}
+
 function validateSnapshotRequest(
   snapshot: BaselineSnapshot,
   key: string,

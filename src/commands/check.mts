@@ -14,6 +14,7 @@ import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { writeSummary } from "../step-summary.mts";
 import { assertValidBaselineSnapshotKey } from "../baseline-snapshot.mts";
 import {
+  decodeBaselineSnapshotLcov,
   formatBaselineSnapshotDiagnostic,
   loadBaselineSnapshot,
 } from "../baseline-snapshot-loader.mts";
@@ -226,7 +227,7 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
       );
       pinnedStoredSuites = loaded.suites.map(({ suite, buffer }) => ({
         suite,
-        lcov: parseLcov(buffer.toString("utf8"), stripPrefixes),
+        lcov: parseLcov(decodeBaselineSnapshotLcov(buffer), stripPrefixes),
       }));
       baselineSnapshotDiagnostic = formatBaselineSnapshotDiagnostic(loaded);
     } catch (err) {

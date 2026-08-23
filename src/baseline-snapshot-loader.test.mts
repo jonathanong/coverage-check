@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadBaselineSnapshot } from "./baseline-snapshot-loader.mts";
+import { decodeBaselineSnapshotLcov, loadBaselineSnapshot } from "./baseline-snapshot-loader.mts";
 import {
   baselineSnapshotPayloadObjectName,
   hashBaselineSnapshotPayload,
@@ -70,5 +70,25 @@ describe("loadBaselineSnapshot", () => {
     const loaded = await loadBaselineSnapshot(missingStore, "key", "main", []);
     expect(loaded.created).toBe(true);
     expect(() => mkdirSync(missingRoot)).toThrow();
+  });
+});
+
+describe("decodeBaselineSnapshotLcov", () => {
+  it("accepts a complete LCOV record", () => {
+    expect(
+      decodeBaselineSnapshotLcov(Buffer.from("TN:\nSF:backend/foo.mts\nDA:1,1\nend_of_record\n")),
+    ).toContain("SF:backend/foo.mts");
+  });
+
+  it.each([
+    Buffer.from([0xff]),
+    Buffer.from("arbitrary text"),
+    Buffer.from("SF:\nend_of_record\n"),
+    Buffer.from("DA:1,1\n"),
+    Buffer.from("SF:file\nDA:not-valid\nend_of_record\n"),
+    Buffer.from("SF:file\n"),
+    Buffer.from("end_of_record\n"),
+  ])("rejects invalid UTF-8 and malformed LCOV", (payload) => {
+    expect(() => decodeBaselineSnapshotLcov(payload)).toThrow(/UTF-8|malformed/);
   });
 });
