@@ -10,7 +10,12 @@ import {
   FileSystemSuiteStore,
   isNewerTimestamp,
 } from "./suite-store.mts";
-import { baselineSnapshotObjectName, createBaselineSnapshot } from "./baseline-snapshot.mts";
+import {
+  baselineSnapshotObjectName,
+  baselineSnapshotPayloadObjectName,
+  createBaselineSnapshot,
+  hashBaselineSnapshotPayload,
+} from "./baseline-snapshot.mts";
 
 describe("FileSystemSuiteStore", () => {
   let tmpDir: string;
@@ -86,8 +91,14 @@ describe("FileSystemSuiteStore", () => {
     });
 
     it("atomically keeps the first snapshot for a key", async () => {
-      const first = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "one" }]);
-      const second = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "two" }]);
+      const firstPayloadHash = hashBaselineSnapshotPayload(Buffer.from("one"));
+      const secondPayloadHash = hashBaselineSnapshotPayload(Buffer.from("two"));
+      const first = createBaselineSnapshot("key", "main", [
+        { suite: "backend", sha: "one", payloadHash: firstPayloadHash },
+      ]);
+      const second = createBaselineSnapshot("key", "main", [
+        { suite: "backend", sha: "two", payloadHash: secondPayloadHash },
+      ]);
 
       expect(await store.putBaselineSnapshotIfAbsent("key", first)).toMatchObject({
         created: true,
@@ -99,6 +110,26 @@ describe("FileSystemSuiteStore", () => {
       });
       expect(await store.readBaselineSnapshot("key")).toEqual(first);
       expect(await store.readBaselineSnapshot("missing")).toBeNull();
+    });
+
+    it("stores immutable snapshot payloads by content hash", async () => {
+      const payload = Buffer.from("baseline");
+      const payloadHash = hashBaselineSnapshotPayload(payload);
+      await store.putBaselineSnapshotPayloadIfAbsent(payloadHash, payload);
+      await store.putBaselineSnapshotPayloadIfAbsent(payloadHash, Buffer.from("baseline"));
+
+      expect(await store.readBaselineSnapshotPayload(payloadHash)).toEqual(payload);
+      expect(readFileSync(join(tmpDir, baselineSnapshotPayloadObjectName(payloadHash)))).toEqual(
+        payload,
+      );
+      await expect(
+        store.putBaselineSnapshotPayloadIfAbsent(payloadHash, Buffer.from("replacement")),
+      ).rejects.toThrow("content hash");
+      expect(
+        await store.readBaselineSnapshotPayload(
+          hashBaselineSnapshotPayload(Buffer.from("missing")),
+        ),
+      ).toBeNull();
     });
   });
 

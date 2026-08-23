@@ -3,6 +3,8 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   baselineSnapshotObjectName,
+  baselineSnapshotPayloadObjectName,
+  hashBaselineSnapshotPayload,
   parseBaselineSnapshotBuffer,
   serializeBaselineSnapshot,
 } from "./baseline-snapshot.mts";
@@ -86,6 +88,8 @@ export interface SnapshotSuiteStore extends SuiteStore {
     key: string,
     snapshot: BaselineSnapshot,
   ): Promise<BaselineSnapshotWriteResult>;
+  readBaselineSnapshotPayload(payloadHash: string): Promise<Buffer | null>;
+  putBaselineSnapshotPayloadIfAbsent(payloadHash: string, payload: Buffer): Promise<void>;
 }
 
 export function isSnapshotSuiteStore(store: SuiteStore): store is SnapshotSuiteStore {
@@ -93,7 +97,9 @@ export function isSnapshotSuiteStore(store: SuiteStore): store is SnapshotSuiteS
   return (
     typeof candidate.resolveVersion === "function" &&
     typeof candidate.readBaselineSnapshot === "function" &&
-    typeof candidate.putBaselineSnapshotIfAbsent === "function"
+    typeof candidate.putBaselineSnapshotIfAbsent === "function" &&
+    typeof candidate.readBaselineSnapshotPayload === "function" &&
+    typeof candidate.putBaselineSnapshotPayloadIfAbsent === "function"
   );
 }
 
@@ -221,6 +227,29 @@ export class FileSystemSuiteStore implements SnapshotSuiteStore {
     }
   }
 
+  async readBaselineSnapshotPayload(payloadHash: string): Promise<Buffer | null> {
+    const path = this.baselineSnapshotPayloadPath(payloadHash);
+    try {
+      return readFileSync(path);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  }
+
+  async putBaselineSnapshotPayloadIfAbsent(payloadHash: string, payload: Buffer): Promise<void> {
+    if (hashBaselineSnapshotPayload(payload) !== payloadHash) {
+      throw new Error("baseline snapshot payload does not match its content hash");
+    }
+    const path = this.baselineSnapshotPayloadPath(payloadHash);
+    mkdirSync(this.root, { recursive: true });
+    try {
+      writeFileSync(path, payload, { flag: "wx" });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+  }
+
   private getLegacy(suite: string): Buffer | null {
     try {
       return readFileSync(join(this.root, suite, "lcov.info"));
@@ -232,6 +261,10 @@ export class FileSystemSuiteStore implements SnapshotSuiteStore {
 
   private baselineSnapshotPath(key: string): string {
     return join(this.root, baselineSnapshotObjectName(key));
+  }
+
+  private baselineSnapshotPayloadPath(payloadHash: string): string {
+    return join(this.root, baselineSnapshotPayloadObjectName(payloadHash));
   }
 
   private shouldWritePointer(pointerPath: string, incomingTimestamp: string): boolean {

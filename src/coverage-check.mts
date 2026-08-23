@@ -11,6 +11,8 @@ export { FileSystemSuiteStore } from "./suite-store.mts";
 export { S3SuiteStore } from "./s3-suite-store.mts";
 export {
   baselineSnapshotObjectName,
+  baselineSnapshotPayloadObjectName,
+  hashBaselineSnapshotPayload,
   parseBaselineSnapshot,
   parseBaselineSnapshotBuffer,
   serializeBaselineSnapshot,

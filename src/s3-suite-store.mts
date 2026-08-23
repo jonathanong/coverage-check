@@ -3,6 +3,8 @@ import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-s
 import { gunzipSync, gzipSync } from "node:zlib";
 import {
   baselineSnapshotObjectName,
+  baselineSnapshotPayloadObjectName,
+  hashBaselineSnapshotPayload,
   parseBaselineSnapshotBuffer,
   serializeBaselineSnapshot,
 } from "./baseline-snapshot.mts";
@@ -168,6 +170,43 @@ export class S3SuiteStore implements SnapshotSuiteStore {
       const existing = await this.readBaselineSnapshot(key);
       if (existing === null) throw new Error("baseline snapshot missing after create conflict");
       return { snapshot: existing, created: false };
+    }
+  }
+
+  async readBaselineSnapshotPayload(payloadHash: string): Promise<Buffer | null> {
+    const objectKey = this.key(baselineSnapshotPayloadObjectName(payloadHash));
+    try {
+      const response = (await this.sendS3(
+        "get baseline snapshot payload",
+        objectKey,
+        new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+      )) as { Body: unknown };
+      return bodyToBuffer(response.Body);
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  async putBaselineSnapshotPayloadIfAbsent(payloadHash: string, payload: Buffer): Promise<void> {
+    if (hashBaselineSnapshotPayload(payload) !== payloadHash) {
+      throw new Error("baseline snapshot payload does not match its content hash");
+    }
+    const objectKey = this.key(baselineSnapshotPayloadObjectName(payloadHash));
+    try {
+      await this.sendS3(
+        "put baseline snapshot payload",
+        objectKey,
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: objectKey,
+          Body: payload,
+          ContentType: "text/plain",
+          IfNoneMatch: "*",
+        }),
+      );
+    } catch (err) {
+      if (!isConditionalWriteConflict(err)) throw err;
     }
   }
 

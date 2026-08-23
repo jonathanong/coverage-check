@@ -89,17 +89,19 @@ coverage-check check \
   --active-suite frontend
 ```
 
-The first check for a key atomically records the SHA currently resolved for every available suite;
-later checks with the same key load those immutable SHA-addressed payloads even if the branch
-pointers advance. A key based on repository, PR number, and PR head SHA is reused for reruns of the
-same code and naturally refreshes after a new PR commit. Without `--baseline-snapshot-key`, checks
-retain the previous branch-pointer behavior.
+The first check for a key atomically records the SHA currently resolved for every available suite
+and preserves each payload under its content hash. Later checks with the same key load those
+immutable payloads even if a branch pointer advances or the original SHA path is overwritten. A key
+based on repository, PR number, and PR head SHA is reused for reruns of the same code and naturally
+refreshes after a new PR commit. Without `--baseline-snapshot-key`, checks retain the previous
+branch-pointer behavior.
 
 Snapshot creation requires `s3:PutObject`; reading or reusing one requires `s3:GetObject`. Snapshot
-manifests are stored as `.coverage-check-baseline-snapshot-v1-<key-hash>.json` and retained for as
-long as their SHA-addressed coverage payloads. Legacy mutable `<suite>/lcov.info` data cannot be
-pinned; use versioned `store-put --sha ... --branch ...` writes first. A missing or corrupt pinned
-payload fails the check as an infrastructure error rather than silently falling back to `latest`.
+manifests are stored as `.coverage-check-baseline-snapshot-v1-<key-hash>.json`; immutable payload
+copies use `.coverage-check-baseline-payload-v1-<content-hash>.lcov`. Retain both object types
+together. Legacy mutable `<suite>/lcov.info` data cannot be pinned; use versioned
+`store-put --sha ... --branch ...` writes first. A missing or corrupt pinned payload fails the check
+as an infrastructure error rather than silently falling back to `latest`.
 
 Snapshotting removes moving-baseline variance only. If the candidate coverage itself varies across
 integration-test runs, make those tests deterministic or configure an appropriate
@@ -116,6 +118,7 @@ artifacts from the earlier attempt. Rerun the coverage-producing jobs when neces
 <prefix>/<suite>/sha/<sha>/lcov.info.gz       # gzip payload for new versioned writes
 <prefix>/<suite>/branch/<encoded-branch>/latest.json  # pointer with sha, payloadKey, encoding, byte counts, timestamp
 <prefix>/.coverage-check-baseline-snapshot-v1-<key-hash>.json  # immutable per-suite SHA map
+<prefix>/.coverage-check-baseline-payload-v1-<content-hash>.lcov  # immutable snapshot payload
 ```
 
 S3-backed stores need `s3:PutObject` for writes and `s3:GetObject` for reading branch pointers and baselines. The pointer reader also checks the previous unencoded pointer key (for example `branch/main/latest.json`) so stores written before branch-name encoding remain readable.
@@ -652,8 +655,9 @@ class MyCustomStore implements SuiteStore {
 
 This base interface is unchanged and remains sufficient for branch-pointer checks. To support
 `baselineSnapshotKey`, implement the exported `SnapshotSuiteStore` extension, including immutable
-version resolution plus atomic read-or-create snapshot operations. A check fails with exit code `2`
-if snapshot pinning is requested from a store that only implements `SuiteStore`.
+version resolution, content-addressed payload storage, and atomic read-or-create snapshot
+operations. A check fails with exit code `2` if snapshot pinning is requested from a store that only
+implements `SuiteStore`.
 
 ## License
 

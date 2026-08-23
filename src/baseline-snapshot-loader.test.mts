@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadBaselineSnapshot } from "./baseline-snapshot-loader.mts";
+import {
+  baselineSnapshotPayloadObjectName,
+  hashBaselineSnapshotPayload,
+} from "./baseline-snapshot.mts";
 import { FileSystemSuiteStore } from "./suite-store.mts";
 
 describe("loadBaselineSnapshot", () => {
@@ -20,13 +24,13 @@ describe("loadBaselineSnapshot", () => {
 
   it("records absent suites so they cannot appear later under the same key", async () => {
     const first = await loadBaselineSnapshot(store, "key", "main", ["optional"]);
-    expect(first.snapshot.suites).toEqual([{ suite: "optional", sha: null }]);
+    expect(first.snapshot.suites).toEqual([{ suite: "optional", sha: null, payloadHash: null }]);
     expect(first.suites).toEqual([]);
 
     await store.put("optional", Buffer.from("later"), { sha: "later", branch: "main" });
     const rerun = await loadBaselineSnapshot(store, "key", "main", ["optional"]);
     expect(rerun.created).toBe(false);
-    expect(rerun.snapshot.suites).toEqual([{ suite: "optional", sha: null }]);
+    expect(rerun.snapshot.suites).toEqual([{ suite: "optional", sha: null, payloadHash: null }]);
     expect(rerun.suites).toEqual([]);
   });
 
@@ -40,12 +44,23 @@ describe("loadBaselineSnapshot", () => {
     );
   });
 
-  it("fails when an immutable payload referenced by a snapshot disappears", async () => {
+  it("keeps the baseline immutable when the same sha payload is overwritten", async () => {
     await store.put("backend", Buffer.from("baseline"), { sha: "abc", branch: "main" });
+    const first = await loadBaselineSnapshot(store, "key", "main", ["backend"]);
+    await store.put("backend", Buffer.from("replacement"), { sha: "abc", branch: "main" });
+
+    const rerun = await loadBaselineSnapshot(store, "key", "main", ["backend"]);
+    expect(first.suites[0]?.buffer.toString()).toBe("baseline");
+    expect(rerun.suites[0]?.buffer.toString()).toBe("baseline");
+  });
+
+  it("fails when an immutable payload referenced by a snapshot disappears", async () => {
+    const payload = Buffer.from("baseline");
+    await store.put("backend", payload, { sha: "abc", branch: "main" });
     await loadBaselineSnapshot(store, "key", "main", ["backend"]);
-    rmSync(join(root, "backend", "sha", "abc", "lcov.info"));
+    rmSync(join(root, baselineSnapshotPayloadObjectName(hashBaselineSnapshotPayload(payload))));
     await expect(loadBaselineSnapshot(store, "key", "main", ["backend"])).rejects.toThrow(
-      "references missing payload",
+      "references missing immutable payload",
     );
   });
 

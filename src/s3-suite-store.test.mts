@@ -7,7 +7,9 @@ import { sendS3 } from "./s3-diagnostics.mts";
 import { encodeBranchName } from "./suite-store.mts";
 import {
   baselineSnapshotObjectName,
+  baselineSnapshotPayloadObjectName,
   createBaselineSnapshot,
+  hashBaselineSnapshotPayload,
   serializeBaselineSnapshot,
 } from "./baseline-snapshot.mts";
 
@@ -90,6 +92,9 @@ describe("S3SuiteStore — list()", () => {
 });
 
 describe("S3SuiteStore — baseline snapshots", () => {
+  const payload = Buffer.from("baseline");
+  const payloadHash = hashBaselineSnapshotPayload(payload);
+
   it("resolves the branch pointer without fetching its payload", async () => {
     const client = makeClient(async () => ({ Body: Buffer.from(POINTER) }));
     const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
@@ -101,7 +106,9 @@ describe("S3SuiteStore — baseline snapshots", () => {
   });
 
   it("writes a snapshot conditionally and reads it back", async () => {
-    const snapshot = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "abc" }]);
+    const snapshot = createBaselineSnapshot("key", "main", [
+      { suite: "backend", sha: "abc", payloadHash },
+    ]);
     const client = makeClient(async (cmd) => {
       if (cmd instanceof GetObjectCommand) {
         return { Body: serializeBaselineSnapshot(snapshot) };
@@ -121,8 +128,12 @@ describe("S3SuiteStore — baseline snapshots", () => {
   });
 
   it("returns the first writer's snapshot after a conditional conflict", async () => {
-    const winner = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "winner" }]);
-    const loser = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "loser" }]);
+    const winner = createBaselineSnapshot("key", "main", [
+      { suite: "backend", sha: "winner", payloadHash },
+    ]);
+    const loser = createBaselineSnapshot("key", "main", [
+      { suite: "backend", sha: "loser", payloadHash },
+    ]);
     const client = makeClient(async (cmd) => {
       if (cmd instanceof PutObjectCommand) {
         const error = new Error("precondition failed");
@@ -146,6 +157,44 @@ describe("S3SuiteStore — baseline snapshots", () => {
       client: makeClient(async () => notFound()),
     });
     expect(await store.readBaselineSnapshot("missing")).toBeNull();
+  });
+
+  it("writes and reads immutable snapshot payloads by content hash", async () => {
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof GetObjectCommand) return { Body: payload };
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+
+    await store.putBaselineSnapshotPayloadIfAbsent(payloadHash, payload);
+    const put = client.send.mock.calls[0][0] as PutObjectCommand;
+    expect(put.input.IfNoneMatch).toBe("*");
+    expect(put.input.Key).toBe(`${PREFIX}/${baselineSnapshotPayloadObjectName(payloadHash)}`);
+    expect(await store.readBaselineSnapshotPayload(payloadHash)).toEqual(payload);
+    await expect(
+      store.putBaselineSnapshotPayloadIfAbsent(payloadHash, Buffer.from("replacement")),
+    ).rejects.toThrow("content hash");
+  });
+
+  it("accepts an existing immutable payload after a conditional conflict", async () => {
+    const client = makeClient(async () => {
+      const error = new Error("precondition failed");
+      error.name = "PreconditionFailed";
+      throw error;
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(store.putBaselineSnapshotPayloadIfAbsent(payloadHash, payload)).resolves.toBe(
+      undefined,
+    );
+  });
+
+  it("returns null for a missing immutable payload", async () => {
+    const store = new S3SuiteStore({
+      bucket: BUCKET,
+      prefix: PREFIX,
+      client: makeClient(async () => notFound()),
+    });
+    expect(await store.readBaselineSnapshotPayload(payloadHash)).toBeNull();
   });
 });
 

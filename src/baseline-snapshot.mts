@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 
 export const BASELINE_SNAPSHOT_OBJECT_PREFIX = ".coverage-check-baseline-snapshot-v1-";
+export const BASELINE_SNAPSHOT_PAYLOAD_PREFIX = ".coverage-check-baseline-payload-v1-";
 
 export type BaselineSnapshotEntry = {
   suite: string;
   sha: string | null;
+  payloadHash: string | null;
 };
 
 export type BaselineSnapshot = {
@@ -31,6 +33,15 @@ export function assertValidBaselineSnapshotKey(key: string): void {
 export function baselineSnapshotObjectName(key: string): string {
   assertValidBaselineSnapshotKey(key);
   return `${BASELINE_SNAPSHOT_OBJECT_PREFIX}${createHash("sha256").update(key, "utf8").digest("hex")}.json`;
+}
+
+export function hashBaselineSnapshotPayload(payload: Buffer): string {
+  return createHash("sha256").update(payload).digest("hex");
+}
+
+export function baselineSnapshotPayloadObjectName(payloadHash: string): string {
+  assertValidPayloadHash(payloadHash);
+  return `${BASELINE_SNAPSHOT_PAYLOAD_PREFIX}${payloadHash}.lcov`;
 }
 
 export function createBaselineSnapshot(
@@ -77,14 +88,27 @@ export function parseBaselineSnapshot(value: unknown): BaselineSnapshot {
     const entry = raw as Record<string, unknown>;
     const suite = entry["suite"];
     const sha = entry["sha"];
+    const payloadHash = entry["payloadHash"];
     assertSafeComponent(suite, "suite");
     if (sha !== null) assertSafeComponent(sha, "sha");
+    if (payloadHash !== null) assertValidPayloadHash(payloadHash);
+    if ((sha === null) !== (payloadHash === null)) {
+      throw new Error(
+        "baseline snapshot suite sha and payload hash must both be present or absent",
+      );
+    }
     if (seen.has(suite)) throw new Error(`duplicate baseline snapshot suite: ${suite}`);
     seen.add(suite);
-    return { suite, sha };
+    return { suite, sha, payloadHash };
   });
   suites.sort((a, b) => a.suite.localeCompare(b.suite));
   return { version: 1, key, branch, createdAt, suites };
+}
+
+function assertValidPayloadHash(value: unknown): asserts value is string {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
+    throw new Error("invalid baseline snapshot payload hash");
+  }
 }
 
 export function serializeBaselineSnapshot(snapshot: BaselineSnapshot): Buffer {

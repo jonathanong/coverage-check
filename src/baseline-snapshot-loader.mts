@@ -1,4 +1,4 @@
-import { createBaselineSnapshot } from "./baseline-snapshot.mts";
+import { createBaselineSnapshot, hashBaselineSnapshotPayload } from "./baseline-snapshot.mts";
 import { isSnapshotSuiteStore } from "./suite-store.mts";
 import type { BaselineSnapshot, BaselineSnapshotEntry } from "./baseline-snapshot.mts";
 import type { SuiteStore } from "./suite-store.mts";
@@ -32,7 +32,16 @@ export async function loadBaselineSnapshot(
             `suite ${JSON.stringify(suite)} uses the mutable legacy layout; store it with --sha and --branch before pinning`,
           );
         }
-        return { suite, sha: resolved?.sha ?? null };
+        if (resolved === null) return { suite, sha: null, payloadHash: null };
+        const buffer = await store.get(suite, { sha: resolved.sha });
+        if (buffer === null) {
+          throw new Error(
+            `baseline branch references missing payload for suite ${JSON.stringify(suite)} at sha ${JSON.stringify(resolved.sha)}`,
+          );
+        }
+        const payloadHash = hashBaselineSnapshotPayload(buffer);
+        await store.putBaselineSnapshotPayloadIfAbsent(payloadHash, buffer);
+        return { suite, sha: resolved.sha, payloadHash };
       }),
     );
     const candidate = createBaselineSnapshot(key, branch, entries);
@@ -44,12 +53,17 @@ export async function loadBaselineSnapshot(
   validateSnapshotRequest(snapshot, key, branch, activeSuites);
   const suites = (
     await Promise.all(
-      snapshot.suites.map(async ({ suite, sha }) => {
-        if (sha === null) return null;
-        const buffer = await store.get(suite, { sha });
+      snapshot.suites.map(async ({ suite, sha, payloadHash }) => {
+        if (sha === null || payloadHash === null) return null;
+        const buffer = await store.readBaselineSnapshotPayload(payloadHash);
         if (buffer === null) {
           throw new Error(
-            `baseline snapshot references missing payload for suite ${JSON.stringify(suite)} at sha ${JSON.stringify(sha)}`,
+            `baseline snapshot references missing immutable payload for suite ${JSON.stringify(suite)} at sha ${JSON.stringify(sha)}`,
+          );
+        }
+        if (hashBaselineSnapshotPayload(buffer) !== payloadHash) {
+          throw new Error(
+            `baseline snapshot payload hash mismatch for suite ${JSON.stringify(suite)} at sha ${JSON.stringify(sha)}`,
           );
         }
         return { suite, buffer };
