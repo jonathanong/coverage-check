@@ -1,6 +1,6 @@
 {
   "name": "coverage-check",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Patch-coverage gate: checks that newly added lines meet per-path coverage thresholds. Supports per-suite LCOV accumulation for conditional CI.",
   "license": "MIT",
   "author": "Jonathan Ong",
@@ -35,8 +35,8 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
-    "@jridgewell/trace-mapping": "^0.3.31",
     "@aws-sdk/client-s3": "3.1111.0",
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@smithy/node-http-handler": "^4.7.7",
     "esbuild": "^0.28.2",
     "js-yaml": "^5.2.1",
@@ -48,8 +48,12 @@
     "vitest": ">=3.2.0 <5"
   },
   "peerDependenciesMeta": {
-    "@vitest/coverage-v8": { "optional": true },
-    "vitest": { "optional": true }
+    "@vitest/coverage-v8": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
