@@ -13,6 +13,10 @@
       "types": "./dist/src/coverage-check.d.mts",
       "import": "./dist/src/coverage-check.mjs"
     },
+    "./vitest": {
+      "types": "./dist/src/vitest.d.mts",
+      "import": "./dist/src/vitest.mjs"
+    },
     "./src/*.mts": {
       "types": "./dist/src/*.d.mts",
       "import": "./dist/src/*.mjs"
@@ -31,10 +35,21 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@aws-sdk/client-s3": "3.1111.0",
     "@smithy/node-http-handler": "^4.7.7",
+    "esbuild": "^0.28.2",
     "js-yaml": "^5.2.1",
+    "minimatch": "^10.1.1",
     "monocart-coverage-reports": "^2.12.11"
+  },
+  "peerDependencies": {
+    "@vitest/coverage-v8": ">=3.2.0 <5",
+    "vitest": ">=3.2.0 <5"
+  },
+  "peerDependenciesMeta": {
+    "@vitest/coverage-v8": { "optional": true },
+    "vitest": { "optional": true }
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

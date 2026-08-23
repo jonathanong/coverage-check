@@ -17,7 +17,7 @@ export type CheckJsonPayload = CoverageCheckResult & {
 };
 
 export function emptyResult(passed: boolean): CoverageCheckResult {
-  return { buckets: [], drops: [], informational: [], passed };
+  return { buckets: [], drops: [], informational: [], missingCoverage: [], passed };
 }
 
 export function toJsonPayload(check: CheckRunResult): CheckJsonPayload {

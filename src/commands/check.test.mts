@@ -436,6 +436,7 @@ describe("main integration", () => {
       buckets: [],
       drops: [],
       informational: [],
+      missingCoverage: [],
       passed: true,
       exitCode: 0,
       advisory: false,
@@ -2217,7 +2218,13 @@ describe("with a real git repo and a known diff", () => {
     });
     expect(check.exitCode).toBe(0);
     expect(check.skipped).toBe(true);
-    expect(check.result).toEqual({ buckets: [], drops: [], informational: [], passed: true });
+    expect(check.result).toEqual({
+      buckets: [],
+      drops: [],
+      informational: [],
+      missingCoverage: [],
+      passed: true,
+    });
     expect(check.warnings.join("\n")).toContain("no coverage data found");
   });
 

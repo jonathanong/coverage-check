@@ -22,6 +22,50 @@ coverage-check check \
 
 Exits `0` on pass, `1` on failure, `2` on configuration error.
 
+### Shared coverage scope and Vitest provider
+
+Projects can define aggregate, supplemental, and ignored coverage paths in the same rules file:
+
+```yaml
+scope:
+  version: 1
+  analyzer: javascript
+  include:
+    - "src/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}"
+  ignored:
+    - "**/*.d.ts"
+    - "**/*.test.{ts,tsx}"
+  supplemental:
+    - "**/types.ts"
+rules:
+  - paths: "src/**"
+    patch_coverage_min: 99
+```
+
+`ignored` takes precedence over `supplemental`; included paths otherwise belong to aggregate
+coverage. With `scope` configured, an executable added line under a positive-threshold rule fails
+the check when no genuine LCOV `SF` record exists. Type-only declarations, comments, and
+multi-line import/export continuations are not treated as executable. Existing rules-only files
+retain the previous missing-record behavior.
+
+Vitest users can make that scope authoritative for report generation too:
+
+```ts
+export default defineConfig({
+  test: {
+    coverage: {
+      provider: "custom",
+      customProviderModule: "coverage-check/vitest",
+    },
+  },
+});
+```
+
+Set `COVERAGE_CHECK_SUPPLEMENTAL_LCOV` to the supplemental `lcov.info` output path. The provider
+reads `.coverage-rules.yml` by default (override with `COVERAGE_CHECK_CONFIG`), removes ignored and
+supplemental files from aggregate coverage, writes genuine executed supplemental records, and
+omits Vitest `(empty-report)` placeholders. The optional peer range supports Vitest 3.2 through 4.x.
+
 ### Suite store with S3 (conditional CI)
 
 When only some CI suites run per PR (e.g. backend tests only when backend files change), store each suite's LCOV in S3 and merge them during coverage checks:

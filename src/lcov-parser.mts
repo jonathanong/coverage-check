@@ -9,6 +9,14 @@ import type { LcovData } from "./types.mts";
 export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData {
   const result: LcovData = new Map();
   let currentLines: Map<number, number> | null = null;
+  let currentPath: string | null = null;
+  let emptyPlaceholder = false;
+  const commitRecord = (): void => {
+    if (emptyPlaceholder || currentPath === null || currentLines === null) return;
+    const target = result.get(currentPath) ?? new Map<number, number>();
+    for (const [lineNo, hits] of currentLines) target.set(lineNo, (target.get(lineNo) ?? 0) + hits);
+    result.set(currentPath, target);
+  };
 
   // Optimization: Instead of using `text.split("\n")` which allocates a massive
   // array of strings in memory and causes significant garbage collection overhead
@@ -23,6 +31,7 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
     const lineEnd = trimLineEnd(text, lineStart, end);
 
     if (text.startsWith("SF:", lineStart)) {
+      commitRecord();
       let path = text.slice(lineStart + 3, lineEnd);
       let stripped = false;
       for (const prefix of stripPrefixes) {
@@ -42,11 +51,14 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
         }
       }
 
-      currentLines = result.get(path) ?? null;
-      if (!currentLines) {
-        currentLines = new Map();
-        result.set(path, currentLines);
-      }
+      currentPath = path;
+      currentLines = new Map();
+      emptyPlaceholder = false;
+    } else if (
+      text.startsWith("FN:", lineStart) &&
+      text.slice(lineStart, lineEnd).includes(",(empty-report)")
+    ) {
+      emptyPlaceholder = true;
     } else if (text.startsWith("DA:", lineStart) && currentLines !== null) {
       const comma = text.indexOf(",", lineStart + 3);
       if (comma !== -1 && comma < lineEnd) {
@@ -58,11 +70,16 @@ export function parseLcov(text: string, stripPrefixes: string[] = []): LcovData 
         }
       }
     } else if (lineEnd - lineStart === 13 && text.startsWith("end_of_record", lineStart)) {
+      commitRecord();
       currentLines = null;
+      currentPath = null;
+      emptyPlaceholder = false;
     }
 
     start = end + 1;
   }
+
+  commitRecord();
 
   return result;
 }

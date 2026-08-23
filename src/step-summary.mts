@@ -94,9 +94,14 @@ export function buildSummaryMarkdown(
   }
 
   const overall = result.passed ? "✅ passed" : "❌ failed";
+  const missingCoverage = result.missingCoverage ?? [];
+  const missingSection =
+    missingCoverage.length === 0
+      ? ""
+      : `\n### Missing coverage records\n\n${missingCoverage.map((item) => `- ${codeSpan(item.file)}: ${item.lines.join(", ")}`).join("\n")}\n`;
   const runLink = runUrl !== "N/A" ? `\n\n_[View run](${runUrl})_` : "";
 
-  return `## Coverage summary — ${overall}\n\n### Suite totals\n\n${suiteTable}\n\n### Patch coverage\n\n${ruleTable}${dropSection}${runLink}\n`;
+  return `## Coverage summary — ${overall}\n\n### Suite totals\n\n${suiteTable}\n\n### Patch coverage\n\n${ruleTable}${missingSection}${dropSection}${runLink}\n`;
 }
 
 export function writeSummary(

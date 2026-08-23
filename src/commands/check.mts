@@ -5,7 +5,7 @@ import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov } from "../lcov-merge.mts";
 import { getChangedLines } from "../diff-parser.mts";
 import { getChangedLineContent } from "../diff-parser-content.mts";
-import { loadRules, buildChangedRules, withIgnoredPaths } from "../rules.mts";
+import { loadCoverageConfig, buildChangedRules, withIgnoredPaths } from "../rules.mts";
 import { computePatchCoverage } from "../patch-coverage.mts";
 import { computeCoverageDrop } from "../coverage-drop.mts";
 import { collapseRanges, renderFailureComment } from "../report.mts";
@@ -198,8 +198,11 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
   }
 
   let rules;
+  let scope;
   try {
-    rules = withIgnoredPaths(loadRules(args.rules), args.ignorePaths);
+    const config = loadCoverageConfig(args.rules);
+    rules = withIgnoredPaths(config.rules, args.ignorePaths);
+    scope = config.scope;
   } catch (err) {
     return emptyEvaluation(2, `failed to load rules: ${err}`);
   }
@@ -358,14 +361,17 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     }
   }
 
-  const { buckets, informational } = args.dropOnly
-    ? { buckets: [], informational: [] }
-    : computePatchCoverage(diff, lcov, rules);
+  const { buckets, informational, missingCoverage } = args.dropOnly
+    ? { buckets: [], informational: [], missingCoverage: [] }
+    : computePatchCoverage(diff, lcov, rules, scope);
   const changedRules =
     (args.dropOnlyChangedAreas ?? false) ? buildChangedRules(diff, rules) : undefined;
   const drops = computeCoverageDrop(lcov, baseline, rules, changedRules);
-  const passed = buckets.every((b) => b.passed) && drops.every((d) => d.passed || d.skipped);
-  const result = { buckets, drops, informational, passed };
+  const passed =
+    buckets.every((b) => b.passed) &&
+    missingCoverage.length === 0 &&
+    drops.every((d) => d.passed || d.skipped);
+  const result = { buckets, drops, informational, missingCoverage, passed };
 
   return {
     exitCode: (args.advisory ?? false) || passed ? 0 : 1,
@@ -441,6 +447,11 @@ function writeJson(path: string, check: CheckRunResult): void {
 function printHumanResult(result: CoverageCheckResult, diffContent: DiffLineContent | null): void {
   if (!result.passed) {
     stdout("\ncoverage-check: FAILED\n");
+    for (const missing of result.missingCoverage ?? []) {
+      stdout(
+        `  ${missing.file}: missing coverage record for ${collapseRanges(missing.lines)} (rule ${missing.rule})`,
+      );
+    }
     for (const bucket of result.buckets.filter((b) => !b.passed)) {
       /* c8 ignore next -- bucket.coverable is always > 0 by patch-coverage.mts L36 guard */
       const pct =

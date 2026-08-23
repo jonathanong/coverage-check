@@ -95,6 +95,16 @@ end_of_record
     expect(result.get("web/components/Foo.tsx")?.get(2)).toBe(1);
   });
 
+  it("discards Vitest empty-report placeholder records", () => {
+    const lcov = `SF:src/unrun.ts\nFN:1,(empty-report)\nDA:1,0\nend_of_record\n`;
+    expect(parseLcov(lcov).has("src/unrun.ts")).toBe(false);
+  });
+
+  it("keeps a genuine record when an empty placeholder for the same file follows it", () => {
+    const lcov = `SF:src/run.ts\nDA:1,2\nend_of_record\nSF:src/run.ts\nFN:1,(empty-report)\nDA:1,0\nend_of_record\n`;
+    expect(parseLcov(lcov).get("src/run.ts")?.get(1)).toBe(2);
+  });
+
   it("skips DA lines with malformed content (no comma)", () => {
     const lcov = `SF:web/foo.mts\nDA:badline\nDA:1,1\nend_of_record\n`;
     const result = parseLcov(lcov);

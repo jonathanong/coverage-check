@@ -52,6 +52,32 @@ describe("computePatchCoverage", () => {
     expect(informational).toHaveLength(0);
   });
 
+  it("fails closed for executable changed lines missing a genuine LCOV record", () => {
+    const diff: ReturnType<typeof parseDiff> = new Map([["backend/missing.ts", new Set([1, 2])]]);
+    const result = computePatchCoverage(
+      diff,
+      new Map(),
+      rules,
+      { version: 1, analyzer: "javascript", include: ["backend/**"] },
+      () => "export const value = 1;\n",
+    );
+    expect(result.missingCoverage).toEqual([
+      { file: "backend/missing.ts", lines: [1], rule: "backend/**" },
+    ]);
+  });
+
+  it("does not require coverage for type-only changed lines", () => {
+    const diff: ReturnType<typeof parseDiff> = new Map([["backend/types.ts", new Set([1])]]);
+    const result = computePatchCoverage(
+      diff,
+      new Map(),
+      rules,
+      { version: 1, analyzer: "javascript", include: ["backend/**"] },
+      () => "export type Value = string;\n",
+    );
+    expect(result.missingCoverage).toEqual([]);
+  });
+
   it("routes unmatched files to informational", () => {
     const lcov = parseLcov(`SF:scripts/ci.mts\nDA:1,0\nend_of_record\n`);
     const diff: ReturnType<typeof parseDiff> = new Map([["scripts/ci.mts", new Set([1])]]);

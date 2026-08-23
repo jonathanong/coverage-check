@@ -95,12 +95,18 @@ export function renderFailureComment(
       : "";
 
   const regressionSection = renderRegressionSection(result.drops);
+  const missingCoverage = result.missingCoverage ?? [];
+  const missingSection =
+    missingCoverage.length === 0
+      ? ""
+      : `\n### Missing coverage records\n\n${missingCoverage.map((item) => `- \`${item.file}\`: ${collapseRanges(item.lines)} (rule \`${item.rule}\`)`).join("\n")}\n`;
 
   return `${COMMENT_MARKER}
 ## Patch coverage gate failed
 
 ${table}
 
+${missingSection}
 ### Uncovered lines
 
 ${sections}
