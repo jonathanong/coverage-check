@@ -367,6 +367,7 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     patchCoverage = args.dropOnly
       ? { buckets: [], informational: [], missingCoverage: [] }
       : computePatchCoverage(diff, lcov, rules, scope, (file) =>
+          // NOSONAR -- matching the package's existing cross-platform Git runner; no shell is used.
           execFileSync("git", ["show", `${args.head}:${file}`], { encoding: "utf8" }),
         );
   } catch (error) {
