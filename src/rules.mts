@@ -28,6 +28,9 @@ function validateScope(scope: unknown, rulesPath: string): asserts scope is Cove
   if (value.analyzer !== "javascript")
     throw new Error(`${rulesPath}: scope.analyzer must be 'javascript'`);
   validateStringArray(value.include, "include", rulesPath);
+  if (value.include.length === 0) {
+    throw new Error(`${rulesPath}: scope.include must contain at least one pattern`);
+  }
   if (value.ignored !== undefined) validateStringArray(value.ignored, "ignored", rulesPath);
   if (value.supplemental !== undefined)
     validateStringArray(value.supplemental, "supplemental", rulesPath);
