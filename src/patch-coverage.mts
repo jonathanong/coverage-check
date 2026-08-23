@@ -4,14 +4,23 @@ import type {
   DiffLines,
   FileCoverageResult,
   LcovData,
+  CoverageScope,
+  MissingCoverageResult,
 } from "./types.mts";
 import { matchRule } from "./rules.mts";
+import { findMissingCoverage } from "./scope.mts";
 
 export function computePatchCoverage(
   diff: DiffLines,
   lcov: LcovData,
   rules: CoverageRule[],
-): { buckets: BucketResult[]; informational: FileCoverageResult[] } {
+  scope?: CoverageScope,
+  readSource?: (path: string) => string,
+): {
+  buckets: BucketResult[];
+  informational: FileCoverageResult[];
+  missingCoverage: MissingCoverageResult[];
+} {
   const bucketMap = new Map<string, BucketResult>();
   const informational: FileCoverageResult[] = [];
 
@@ -78,5 +87,9 @@ export function computePatchCoverage(
     }
   }
 
-  return { buckets, informational };
+  return {
+    buckets,
+    informational,
+    missingCoverage: scope ? findMissingCoverage(diff, lcov, rules, scope, readSource) : [],
+  };
 }

@@ -21,7 +21,13 @@ export { parseDiffWithContent, getChangedLineContent } from "./diff-parser-conte
 export { collapseRanges } from "./report.mts";
 export { parseLcovFull, mergeLcovFull, toLcovFull } from "./lcov-records.mts";
 export { collectLcovFiles } from "./load-artifacts.mts";
-export { loadRules, zeroThresholdGlobs } from "./rules.mts";
+export { loadCoverageConfig, loadRules, zeroThresholdGlobs } from "./rules.mts";
+export {
+  coverageDisposition,
+  executableLineNumbers,
+  findMissingCoverage,
+  normalizeCoveragePath,
+} from "./scope.mts";
 export {
   COVERAGE_MANIFEST_FILENAME,
   SOURCE_ROOT_ALGORITHM,
@@ -85,4 +91,8 @@ export type {
   DiffLines,
   DiffLineContent,
   CoverageRule,
+  CoverageConfig,
+  CoverageScope,
+  CoverageDisposition,
+  MissingCoverageResult,
 } from "./types.mts";

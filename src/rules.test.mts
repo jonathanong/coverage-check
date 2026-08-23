@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadRules, matchRule, zeroThresholdGlobs } from "./rules.mts";
+import { loadCoverageConfig, loadRules, matchRule, zeroThresholdGlobs } from "./rules.mts";
 import type { CoverageRule } from "./types.mts";
 
 const rules: CoverageRule[] = [
@@ -60,6 +60,55 @@ describe("loadRules", () => {
   it("loads a valid rules file", () => {
     const path = write("rules.yml", "rules:\n  - paths: backend/**\n    patch_coverage_min: 90\n");
     expect(loadRules(path)).toEqual([{ paths: "backend/**", patch_coverage_min: 90 }]);
+  });
+
+  it("loads and validates a coverage scope", () => {
+    const path = write(
+      "rules.yml",
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['src/**']\n  supplemental: ['src/types.ts']\n  ignored: ['src/generated/**']\nrules:\n  - paths: src/**\n    patch_coverage_min: 99\n",
+    );
+    expect(loadCoverageConfig(path).scope).toEqual({
+      version: 1,
+      analyzer: "javascript",
+      include: ["src/**"],
+      supplemental: ["src/types.ts"],
+      ignored: ["src/generated/**"],
+    });
+  });
+
+  it("rejects an unsupported scope version", () => {
+    const path = write(
+      "rules.yml",
+      "scope:\n  version: 2\n  analyzer: javascript\n  include: ['src/**']\nrules: []\n",
+    );
+    expect(() => loadCoverageConfig(path)).toThrow("scope.version must be 1");
+  });
+
+  it.each([
+    ["scope: null\nrules: []\n", "scope must be an object"],
+    [
+      "scope:\n  version: 1\n  analyzer: ruby\n  include: []\nrules: []\n",
+      "scope.analyzer must be 'javascript'",
+    ],
+    [
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: nope\nrules: []\n",
+      "scope.include must be an array of strings",
+    ],
+    [
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: []\nrules: []\n",
+      "scope.include must contain at least one pattern",
+    ],
+    [
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['src/**']\n  ignored: [1]\nrules: []\n",
+      "scope.ignored must be an array of strings",
+    ],
+    [
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['src/**']\n  supplemental: nope\nrules: []\n",
+      "scope.supplemental must be an array of strings",
+    ],
+  ])("rejects an invalid scope: %s", (yaml, message) => {
+    const path = write("rules.yml", yaml);
+    expect(() => loadCoverageConfig(path)).toThrow(message);
   });
 
   it("throws when rules is not an array", () => {

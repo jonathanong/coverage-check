@@ -1,6 +1,9 @@
 packages:
   - .
 
+allowBuilds:
+  esbuild: true
+
 overrides:
   '@aws-sdk/checksums': 3.1000.16
   '@aws-sdk/core': 3.975.1

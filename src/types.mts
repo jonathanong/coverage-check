@@ -10,6 +10,28 @@ export type DiffLineContent = Map<string, Map<number, string>>;
 
 export type CoverageRules = {
   rules: CoverageRule[];
+  scope?: CoverageScope;
+};
+
+export type CoverageDisposition = "aggregate" | "supplemental" | "ignored";
+
+export type CoverageScope = {
+  version: 1;
+  analyzer: "javascript";
+  include: string[];
+  ignored?: string[];
+  supplemental?: string[];
+};
+
+export type CoverageConfig = {
+  rules: CoverageRule[];
+  scope?: CoverageScope;
+};
+
+export type MissingCoverageResult = {
+  file: string;
+  lines: number[];
+  rule: string;
 };
 
 /** Map from repo-root-relative file path to map of line number → hit count. */
@@ -49,6 +71,7 @@ export type CoverageCheckResult = {
   buckets: BucketResult[];
   drops: DropResult[];
   informational: FileCoverageResult[];
+  missingCoverage: MissingCoverageResult[];
   passed: boolean;
 };
 

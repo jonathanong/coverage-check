@@ -1,11 +1,12 @@
 // oxlint-disable max-lines -- check evaluation and CLI rendering share one pipeline
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { relative } from "node:path";
 import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov } from "../lcov-merge.mts";
 import { getChangedLines } from "../diff-parser.mts";
 import { getChangedLineContent } from "../diff-parser-content.mts";
-import { loadRules, buildChangedRules, withIgnoredPaths } from "../rules.mts";
+import { loadCoverageConfig, buildChangedRules, withIgnoredPaths } from "../rules.mts";
 import { computePatchCoverage } from "../patch-coverage.mts";
 import { computeCoverageDrop } from "../coverage-drop.mts";
 import { collapseRanges, renderFailureComment } from "../report.mts";
@@ -198,8 +199,11 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
   }
 
   let rules;
+  let scope;
   try {
-    rules = withIgnoredPaths(loadRules(args.rules), args.ignorePaths);
+    const config = loadCoverageConfig(args.rules);
+    rules = withIgnoredPaths(config.rules, args.ignorePaths);
+    scope = config.scope;
   } catch (err) {
     return emptyEvaluation(2, `failed to load rules: ${err}`);
   }
@@ -294,7 +298,7 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     }
   }
 
-  if (reports.length === 0) {
+  if (reports.length === 0 && scope === undefined) {
     return emptyEvaluation(
       args.failOnEmpty ? 1 : 0,
       args.failOnEmpty
@@ -303,7 +307,7 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     );
   }
 
-  const lcov = mergeLcov(reports);
+  const lcov: LcovData = reports.length === 0 ? new Map() : mergeLcov(reports);
 
   let diff: DiffLines = new Map();
   let diffContent: DiffLineContent | null = null;
@@ -358,14 +362,44 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     }
   }
 
-  const { buckets, informational } = args.dropOnly
-    ? { buckets: [], informational: [] }
-    : computePatchCoverage(diff, lcov, rules);
+  let patchCoverage;
+  try {
+    patchCoverage = args.dropOnly
+      ? { buckets: [], informational: [], missingCoverage: [] }
+      : computePatchCoverage(diff, lcov, rules, scope, (file) => {
+          // Git is intentionally PATH-resolved for cross-platform support; execFileSync does not use a shell.
+          return execFileSync("git", ["show", `${args.head}:${file}`], { encoding: "utf8" }); // NOSONAR
+        });
+  } catch (error) {
+    return {
+      exitCode: 2,
+      result: null,
+      suiteSources,
+      runUrl,
+      branch,
+      diffContent,
+      skippedReason: `coverage scope analysis failed: ${String(error)}`,
+      parsedSources,
+      warnings,
+    };
+  }
+  const { buckets, informational, missingCoverage } = patchCoverage;
+  if (reports.length === 0 && missingCoverage.length === 0) {
+    return emptyEvaluation(
+      args.failOnEmpty ? 1 : 0,
+      args.failOnEmpty
+        ? `no coverage data found under ${args.artifacts}`
+        : "no coverage data found — skipping",
+    );
+  }
   const changedRules =
     (args.dropOnlyChangedAreas ?? false) ? buildChangedRules(diff, rules) : undefined;
   const drops = computeCoverageDrop(lcov, baseline, rules, changedRules);
-  const passed = buckets.every((b) => b.passed) && drops.every((d) => d.passed || d.skipped);
-  const result = { buckets, drops, informational, passed };
+  const passed =
+    buckets.every((b) => b.passed) &&
+    missingCoverage.length === 0 &&
+    drops.every((d) => d.passed || d.skipped);
+  const result = { buckets, drops, informational, missingCoverage, passed };
 
   return {
     exitCode: (args.advisory ?? false) || passed ? 0 : 1,
@@ -441,6 +475,12 @@ function writeJson(path: string, check: CheckRunResult): void {
 function printHumanResult(result: CoverageCheckResult, diffContent: DiffLineContent | null): void {
   if (!result.passed) {
     stdout("\ncoverage-check: FAILED\n");
+    for (const missing of result.missingCoverage) {
+      /* c8 ignore next -- exact missing-coverage prose is covered by report and summary renderers */
+      stdout(
+        `  ${missing.file}: missing coverage record for ${collapseRanges(missing.lines)} (rule ${missing.rule})`,
+      );
+    }
     for (const bucket of result.buckets.filter((b) => !b.passed)) {
       /* c8 ignore next -- bucket.coverable is always > 0 by patch-coverage.mts L36 guard */
       const pct =

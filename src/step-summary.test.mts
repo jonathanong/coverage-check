@@ -11,6 +11,7 @@ const passResult: CoverageCheckResult = {
   drops: [],
   buckets: [{ rule: "backend/**", threshold: 90, coverable: 10, hit: 10, passed: true, files: [] }],
   informational: [],
+  missingCoverage: [],
 };
 
 const failResult: CoverageCheckResult = {
@@ -18,6 +19,7 @@ const failResult: CoverageCheckResult = {
   drops: [],
   buckets: [{ rule: "backend/**", threshold: 90, coverable: 10, hit: 8, passed: false, files: [] }],
   informational: [],
+  missingCoverage: [],
 };
 
 const freshSource: SuiteSource = {
@@ -58,6 +60,19 @@ describe("buildSummaryMarkdown", () => {
   it("shows failed status in heading", () => {
     const md = buildSummaryMarkdown([freshSource], failResult, "https://example.com/run/1");
     expect(md).toContain("❌ failed");
+  });
+
+  it("lists missing coverage records", () => {
+    const md = buildSummaryMarkdown(
+      [],
+      {
+        ...failResult,
+        missingCoverage: [{ file: "backend/missing.ts", lines: [2, 3], rule: "backend/**" }],
+      },
+      "N/A",
+    );
+    expect(md).toContain("Missing coverage records");
+    expect(md).toContain("`backend/missing.ts`: 2, 3");
   });
 
   it("lists suite names with source labels", () => {
@@ -114,6 +129,7 @@ describe("buildSummaryMarkdown", () => {
         { rule: "backend/**", threshold: 90, coverable: 0, hit: 0, passed: false, files: [] },
       ],
       informational: [],
+      missingCoverage: [],
     };
     const md = buildSummaryMarkdown([], noCoverableResult, "N/A");
     expect(md).toContain("—");
@@ -130,6 +146,7 @@ describe("buildSummaryMarkdown", () => {
       drops: [],
       buckets: [],
       informational: [],
+      missingCoverage: [],
     };
     const md = buildSummaryMarkdown([], emptyResult, "N/A");
     expect(md).toContain("| — | — | — | — |");
@@ -160,6 +177,7 @@ describe("buildSummaryMarkdown", () => {
         { rule: "back|`end/**", threshold: 90, coverable: 10, hit: 10, passed: true, files: [] },
       ],
       informational: [],
+      missingCoverage: [],
     };
     const md = buildSummaryMarkdown([pipeSource], pipeResult, "N/A", "feat|`branch");
     expect(md).toContain("`` back\\|`end ``");
