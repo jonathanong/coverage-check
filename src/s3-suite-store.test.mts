@@ -5,6 +5,11 @@ import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-s
 import { S3SuiteStore } from "./s3-suite-store.mts";
 import { sendS3 } from "./s3-diagnostics.mts";
 import { encodeBranchName } from "./suite-store.mts";
+import {
+  baselineSnapshotObjectName,
+  createBaselineSnapshot,
+  serializeBaselineSnapshot,
+} from "./baseline-snapshot.mts";
 
 function makeClient(sendImpl: (cmd: unknown) => Promise<unknown>) {
   return { send: vi.fn(sendImpl) };
@@ -81,6 +86,66 @@ describe("S3SuiteStore — list()", () => {
     expect(client.send).toHaveBeenCalledTimes(2);
     const secondCmd = client.send.mock.calls[1][0] as ListObjectsV2Command;
     expect(secondCmd.input.ContinuationToken).toBe("token-xyz");
+  });
+});
+
+describe("S3SuiteStore — baseline snapshots", () => {
+  it("resolves the branch pointer without fetching its payload", async () => {
+    const client = makeClient(async () => ({ Body: Buffer.from(POINTER) }));
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    expect(await store.resolveVersion("backend", "main")).toEqual({
+      kind: "sha",
+      sha: "abc123",
+    });
+    expect(client.send).toHaveBeenCalledOnce();
+  });
+
+  it("writes a snapshot conditionally and reads it back", async () => {
+    const snapshot = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "abc" }]);
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof GetObjectCommand) {
+        return { Body: serializeBaselineSnapshot(snapshot) };
+      }
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+
+    expect(await store.putBaselineSnapshotIfAbsent("key", snapshot)).toEqual({
+      snapshot,
+      created: true,
+    });
+    const put = client.send.mock.calls[0][0] as PutObjectCommand;
+    expect(put.input.IfNoneMatch).toBe("*");
+    expect(put.input.Key).toBe(`${PREFIX}/${baselineSnapshotObjectName("key")}`);
+    expect(await store.readBaselineSnapshot("key")).toEqual(snapshot);
+  });
+
+  it("returns the first writer's snapshot after a conditional conflict", async () => {
+    const winner = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "winner" }]);
+    const loser = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "loser" }]);
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof PutObjectCommand) {
+        const error = new Error("precondition failed");
+        error.name = "PreconditionFailed";
+        throw error;
+      }
+      return { Body: serializeBaselineSnapshot(winner) };
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+
+    expect(await store.putBaselineSnapshotIfAbsent("key", loser)).toEqual({
+      snapshot: winner,
+      created: false,
+    });
+  });
+
+  it("returns null for a missing snapshot", async () => {
+    const store = new S3SuiteStore({
+      bucket: BUCKET,
+      prefix: PREFIX,
+      client: makeClient(async () => notFound()),
+    });
+    expect(await store.readBaselineSnapshot("missing")).toBeNull();
   });
 });
 

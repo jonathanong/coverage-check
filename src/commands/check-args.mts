@@ -1,4 +1,5 @@
 import { makeStore } from "../store-factory.mts";
+import { assertValidBaselineSnapshotKey } from "../baseline-snapshot.mts";
 import { assertSafePathComponent, assertValidRepo } from "../suite-store.mts";
 import type { SuiteStore } from "../suite-store.mts";
 import type { GhRunner } from "../github-comment.mts";
@@ -18,6 +19,8 @@ export type CheckArgs = {
   activeSuites?: string[];
   /** Branch used to resolve baseline from the store. Default: "main". */
   branch?: string;
+  /** Immutable per-suite baseline snapshot key. Opt-in; requires a snapshot-capable store. */
+  baselineSnapshotKey?: string | null;
   gh?: GhRunner;
   /** Path to append the GitHub step summary. Default: $GITHUB_STEP_SUMMARY. */
   summaryFile?: string | null;
@@ -77,6 +80,7 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
     suite: null,
     activeSuites: [],
     branch: "main",
+    baselineSnapshotKey: null,
     summaryFile: process.env["GITHUB_STEP_SUMMARY"] ?? null,
     annotateSource: false,
     advisory: false,
@@ -139,6 +143,12 @@ export function parseCheckArgs(argv: string[]): CheckArgs {
         const branch = val();
         if (branch.length === 0) throw new Error(`invalid branch: ${JSON.stringify(branch)}`);
         args.branch = branch;
+        break;
+      }
+      case "--baseline-snapshot-key": {
+        const key = val();
+        assertValidBaselineSnapshotKey(key);
+        args.baselineSnapshotKey = key;
         break;
       }
       case "--store":

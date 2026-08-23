@@ -9,6 +9,12 @@ export {
 } from "./commands/prepare-artifacts.mts";
 export { FileSystemSuiteStore } from "./suite-store.mts";
 export { S3SuiteStore } from "./s3-suite-store.mts";
+export {
+  baselineSnapshotObjectName,
+  parseBaselineSnapshot,
+  parseBaselineSnapshotBuffer,
+  serializeBaselineSnapshot,
+} from "./baseline-snapshot.mts";
 export { parseDiffWithContent, getChangedLineContent } from "./diff-parser-content.mts";
 export { collapseRanges } from "./report.mts";
 export { parseLcovFull, mergeLcovFull, toLcovFull } from "./lcov-records.mts";
@@ -38,8 +44,14 @@ export type {
   PrepareArtifactsArgs,
   PrepareArtifactsResult,
 } from "./commands/prepare-artifacts.mts";
-export type { SuiteStore, SuiteMeta } from "./suite-store.mts";
+export type { SnapshotSuiteStore, SuiteStore, SuiteMeta } from "./suite-store.mts";
 export type { S3SuiteStoreOptions } from "./s3-suite-store.mts";
+export type {
+  BaselineSnapshot,
+  BaselineSnapshotEntry,
+  BaselineSnapshotWriteResult,
+  ResolvedSuiteVersion,
+} from "./baseline-snapshot.mts";
 export { computeCoverageDrop } from "./coverage-drop.mts";
 export type { FullLcovData, FullFileCoverage } from "./lcov-records.mts";
 export type {

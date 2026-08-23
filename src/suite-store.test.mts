@@ -10,6 +10,7 @@ import {
   FileSystemSuiteStore,
   isNewerTimestamp,
 } from "./suite-store.mts";
+import { baselineSnapshotObjectName, createBaselineSnapshot } from "./baseline-snapshot.mts";
 
 describe("FileSystemSuiteStore", () => {
   let tmpDir: string;
@@ -62,6 +63,42 @@ describe("FileSystemSuiteStore", () => {
     it("rethrows non-ENOENT errors", async () => {
       const badStore = new FileSystemSuiteStore("\0invalid");
       await expect(badStore.list()).rejects.toThrow();
+    });
+
+    it("does not expose root-level snapshot metadata as a suite", async () => {
+      const snapshot = createBaselineSnapshot("key", "main", []);
+      await store.putBaselineSnapshotIfAbsent("key", snapshot);
+      expect(await store.list()).not.toContain(baselineSnapshotObjectName("key"));
+    });
+  });
+
+  describe("baseline snapshots", () => {
+    it("resolves versioned, legacy, and absent suites", async () => {
+      await store.put("versioned", Buffer.from("versioned"), { sha: "abc", branch: "main" });
+      await store.put("legacy", Buffer.from("legacy"));
+
+      expect(await store.resolveVersion("versioned", "main")).toEqual({
+        kind: "sha",
+        sha: "abc",
+      });
+      expect(await store.resolveVersion("legacy", "main")).toEqual({ kind: "legacy" });
+      expect(await store.resolveVersion("missing", "main")).toBeNull();
+    });
+
+    it("atomically keeps the first snapshot for a key", async () => {
+      const first = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "one" }]);
+      const second = createBaselineSnapshot("key", "main", [{ suite: "backend", sha: "two" }]);
+
+      expect(await store.putBaselineSnapshotIfAbsent("key", first)).toMatchObject({
+        created: true,
+        snapshot: first,
+      });
+      expect(await store.putBaselineSnapshotIfAbsent("key", second)).toMatchObject({
+        created: false,
+        snapshot: first,
+      });
+      expect(await store.readBaselineSnapshot("key")).toEqual(first);
+      expect(await store.readBaselineSnapshot("missing")).toBeNull();
     });
   });
 

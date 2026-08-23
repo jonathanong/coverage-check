@@ -1,12 +1,23 @@
+// oxlint-disable max-lines -- S3 suite and snapshot operations share transport diagnostics
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { gunzipSync, gzipSync } from "node:zlib";
+import {
+  baselineSnapshotObjectName,
+  parseBaselineSnapshotBuffer,
+  serializeBaselineSnapshot,
+} from "./baseline-snapshot.mts";
 import { assertSafePathComponent, assertValidTimestamp, encodeBranchName } from "./suite-store.mts";
 import { createS3Client, sendS3 } from "./s3-diagnostics.mts";
 import { getLegacy, readPointer, shouldWritePointer } from "./s3-suite-store-reads.mts";
-import { bodyToBuffer, isNotFound } from "./s3-utils.mts";
+import { bodyToBuffer, isConditionalWriteConflict, isNotFound } from "./s3-utils.mts";
 import type { ClientLike, S3OperationDetails } from "./s3-diagnostics.mts";
 import type { StoredPointer } from "./s3-suite-store-reads.mts";
-import type { SuitePutMeta, SuiteStore } from "./suite-store.mts";
+import type {
+  BaselineSnapshot,
+  BaselineSnapshotWriteResult,
+  ResolvedSuiteVersion,
+} from "./baseline-snapshot.mts";
+import type { SnapshotSuiteStore, SuitePutMeta } from "./suite-store.mts";
 
 export type S3SuiteStoreOptions = {
   bucket: string;
@@ -15,7 +26,7 @@ export type S3SuiteStoreOptions = {
   client?: ClientLike;
 };
 
-export class S3SuiteStore implements SuiteStore {
+export class S3SuiteStore implements SnapshotSuiteStore {
   readonly bucket: string;
   private readonly prefix: string;
   private readonly client: ClientLike;
@@ -107,6 +118,59 @@ export class S3SuiteStore implements SuiteStore {
     await this.putPointer(suite, branch, sha, ts, payloadKey, lcov.byteLength, payload.byteLength);
   }
 
+  async resolveVersion(suite: string, branch: string): Promise<ResolvedSuiteVersion | null> {
+    assertSafePathComponent(suite, "suite");
+    try {
+      const pointer = await readPointer(this, suite, branch);
+      assertSafePathComponent(pointer.sha, "sha");
+      return { kind: "sha", sha: pointer.sha };
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+      return (await getLegacy(this, suite)) === null ? null : { kind: "legacy" };
+    }
+  }
+
+  async readBaselineSnapshot(key: string): Promise<BaselineSnapshot | null> {
+    const objectKey = this.baselineSnapshotKey(key);
+    try {
+      const response = (await this.sendS3(
+        "get baseline snapshot",
+        objectKey,
+        new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+      )) as { Body: unknown };
+      return parseBaselineSnapshotBuffer(await bodyToBuffer(response.Body));
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  async putBaselineSnapshotIfAbsent(
+    key: string,
+    snapshot: BaselineSnapshot,
+  ): Promise<BaselineSnapshotWriteResult> {
+    const objectKey = this.baselineSnapshotKey(key);
+    try {
+      await this.sendS3(
+        "put baseline snapshot",
+        objectKey,
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: objectKey,
+          Body: serializeBaselineSnapshot(snapshot),
+          ContentType: "application/json",
+          IfNoneMatch: "*",
+        }),
+      );
+      return { snapshot, created: true };
+    } catch (err) {
+      if (!isConditionalWriteConflict(err)) throw err;
+      const existing = await this.readBaselineSnapshot(key);
+      if (existing === null) throw new Error("baseline snapshot missing after create conflict");
+      return { snapshot: existing, created: false };
+    }
+  }
+
   sendS3(
     operation: string,
     key: string,
@@ -196,5 +260,9 @@ export class S3SuiteStore implements SuiteStore {
         ContentType: "application/json",
       }),
     );
+  }
+
+  private baselineSnapshotKey(key: string): string {
+    return this.key(baselineSnapshotObjectName(key));
   }
 }

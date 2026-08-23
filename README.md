@@ -73,11 +73,44 @@ that are not yet present in the manifest or store. `--drop-only` returns and pri
 `no_coverage_drop` results; it skips patch-coverage buckets and does not read the Git diff unless
 `--drop-only-changed-areas` is also set.
 
+### Stable baselines across PR reruns
+
+Branch pointers intentionally advance when new coverage is stored on `main`. To keep an unchanged
+PR rerun from comparing against a different set of suite baselines, pass a stable snapshot key:
+
+```sh
+coverage-check check \
+  --rules .coverage-rules.yml \
+  --artifacts ./coverage-artifacts \
+  --store-s3 my-bucket/coverage-store \
+  --branch main \
+  --baseline-snapshot-key "$GITHUB_REPOSITORY:pr-$PR_NUMBER:$PR_HEAD_SHA" \
+  --active-suite backend \
+  --active-suite frontend
+```
+
+The first check for a key atomically records the SHA currently resolved for every available suite;
+later checks with the same key load those immutable SHA-addressed payloads even if the branch
+pointers advance. A key based on repository, PR number, and PR head SHA is reused for reruns of the
+same code and naturally refreshes after a new PR commit. Without `--baseline-snapshot-key`, checks
+retain the previous branch-pointer behavior.
+
+Snapshot creation requires `s3:PutObject`; reading or reusing one requires `s3:GetObject`. Snapshot
+manifests are stored as `.coverage-check-baseline-snapshot-v1-<key-hash>.json` and retained for as
+long as their SHA-addressed coverage payloads. Legacy mutable `<suite>/lcov.info` data cannot be
+pinned; use versioned `store-put --sha ... --branch ...` writes first. A missing or corrupt pinned
+payload fails the check as an infrastructure error rather than silently falling back to `latest`.
+
+Snapshotting removes moving-baseline variance only. If the candidate coverage itself varies across
+integration-test runs, make those tests deterministic or configure an appropriate
+`max_coverage_drop` tolerance.
+
 **S3 key layout:**
 
 ```text
 <prefix>/<suite>/sha/<sha>/lcov.info.gz       # gzip payload for new versioned writes
 <prefix>/<suite>/branch/<encoded-branch>/latest.json  # pointer with sha, payloadKey, encoding, byte counts, timestamp
+<prefix>/.coverage-check-baseline-snapshot-v1-<key-hash>.json  # immutable per-suite SHA map
 ```
 
 S3-backed stores need `s3:PutObject` for writes and `s3:GetObject` for reading branch pointers and baselines. The pointer reader also checks the previous unencoded pointer key (for example `branch/main/latest.json`) so stores written before branch-name encoding remain readable.
@@ -318,6 +351,7 @@ Run `coverage-check --help` or `coverage-check check --help` to print the availa
 | `--store`                   | —                      | Alias for `--store-fs`                                                                                     |
 | `--store-s3`                | —                      | S3 suite store spec: `<bucket>[/<prefix>]`                                                                 |
 | `--branch`                  | `"main"`               | Branch pointer to follow when reading from the store                                                       |
+| `--baseline-snapshot-key`   | —                      | Pin the resolved per-suite baseline SHAs under an immutable caller-provided key                            |
 | `--suite`                   | —                      | Name of the current suite (no `/` or `\\`); fresh artifacts override this suite in the store               |
 | `--active-suite`            | —                      | Active suite for a multi-suite fresh-over-stored overlay (repeatable; mutually exclusive with `--suite`)   |
 | `--strip-prefix`            | —                      | Extra path prefix to strip from LCOV `SF:` lines (repeatable)                                              |
@@ -509,6 +543,7 @@ const check = await checkCoverage({
   store: s3Store,
   suite: "backend",
   branch: "main",
+  baselineSnapshotKey: "owner/repo:pr-39:head-sha",
   advisory: true,
   dropOnlyChangedAreas: false,
   requireArtifacts: [],
@@ -609,6 +644,11 @@ class MyCustomStore implements SuiteStore {
   }
 }
 ```
+
+This base interface is unchanged and remains sufficient for branch-pointer checks. To support
+`baselineSnapshotKey`, implement the exported `SnapshotSuiteStore` extension, including immutable
+version resolution plus atomic read-or-create snapshot operations. A check fails with exit code `2`
+if snapshot pinning is requested from a store that only implements `SuiteStore`.
 
 ## License
 
