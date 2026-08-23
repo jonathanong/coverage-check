@@ -7,7 +7,7 @@ import type { DiffLines } from "./types.mts";
  */
 export function decodeGitCString(s: string): string {
   const bytes: number[] = [];
-  for (let i = 0; i < s.length; ) {
+  for (let i = 0; i < s.length;) {
     if (s[i] === "\\" && i + 1 < s.length) {
       const next = s[i + 1]!;
       if (next >= "0" && next <= "7") {
