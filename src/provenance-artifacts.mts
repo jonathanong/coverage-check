@@ -1,43 +1,72 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  inspectProvenancePair,
+  type ProvenancePairCandidate,
+  type ValidProvenancePair,
+} from "./provenance-artifact-pair.mts";
 import { replaceProvenanceOutput } from "./provenance-artifact-output.mts";
-import { COVERAGE_MANIFEST_FILENAME, validateCoverageManifestBytes } from "./provenance.mts";
+import { COVERAGE_MANIFEST_FILENAME } from "./provenance.mts";
 import { validatePathComponent } from "./provenance-integrity.mts";
 import type {
   PrepareProvenanceArtifactsOptions,
   ProvenanceArtifactSource,
   SelectedProvenanceArtifact,
 } from "./provenance-artifact-types.mts";
-import type { CoverageManifest } from "./provenance-types.mts";
-
-type ValidPair = {
-  source: string;
-  lcov: Buffer;
-  manifestBytes: Buffer;
-  manifest: CoverageManifest;
-};
-
-type Candidate = {
-  pair?: ValidPair;
-  error?: string;
-};
-
 type SelectedPair = SelectedProvenanceArtifact & {
   lcov: Buffer;
   manifestBytes: Buffer;
 };
 
+const COVERAGE_PAIR_FILENAMES = [COVERAGE_MANIFEST_FILENAME, "lcov.info"];
+
+function hasExactEntries(
+  entries: readonly { isFile: () => boolean; name: string }[],
+  expectedNames: readonly string[],
+): boolean {
+  return (
+    entries.every((entry) => entry.isFile()) &&
+    entries
+      .map((entry) => entry.name)
+      .toSorted((left, right) => left.localeCompare(right))
+      .join("\0") === expectedNames.toSorted((left, right) => left.localeCompare(right)).join("\0")
+  );
+}
+
 function inspectSource(
   source: ProvenanceArtifactSource,
   options: PrepareProvenanceArtifactsOptions,
-): ReadonlyMap<string, Candidate> {
+): ReadonlyMap<string, ProvenancePairCandidate> {
   const expectations = new Map(
     options.expectedSuites.map((expected) => [expected.descriptor.suite, expected]),
   );
-  const candidates = new Map<string, Candidate>();
+  const candidates = new Map<string, ProvenancePairCandidate>();
   if (!existsSync(source.directory)) return candidates;
 
-  for (const entry of readdirSync(source.directory, { withFileTypes: true })) {
+  const sourceEntries = readdirSync(source.directory, { withFileTypes: true });
+  const hasFlatPairEntry = sourceEntries.some((entry) =>
+    COVERAGE_PAIR_FILENAMES.includes(entry.name),
+  );
+  if (hasFlatPairEntry) {
+    if (options.expectedSuites.length !== 1) {
+      throw new Error(
+        `Flat ${source.name} coverage pair is only valid for exactly one expected coverage suite.`,
+      );
+    }
+    if (!hasExactEntries(sourceEntries, COVERAGE_PAIR_FILENAMES)) {
+      throw new Error(
+        `Flat ${source.name} coverage pair must contain exactly ${COVERAGE_PAIR_FILENAMES.join(", ")}.`,
+      );
+    }
+    const expected = options.expectedSuites[0]!;
+    candidates.set(
+      expected.descriptor.suite,
+      inspectProvenancePair(source.name, source.directory, expected, options),
+    );
+    return candidates;
+  }
+
+  for (const entry of sourceEntries) {
     if (!entry.isDirectory() || !entry.name.startsWith("coverage-")) {
       throw new Error(`Unexpected ${source.name} coverage artifact entry: ${entry.name}`);
     }
@@ -51,71 +80,30 @@ function inspectSource(
 
     const pairDirectory = join(source.directory, entry.name);
     const entries = readdirSync(pairDirectory, { withFileTypes: true });
-    const names = entries
-      .map((candidate) => candidate.name)
-      .toSorted((left, right) => left.localeCompare(right));
-    const expectedNames = [COVERAGE_MANIFEST_FILENAME, "lcov.info"];
-    if (
-      entries.some((candidate) => !candidate.isFile()) ||
-      names.join("\0") !==
-        expectedNames.toSorted((left, right) => left.localeCompare(right)).join("\0")
-    ) {
+    if (!hasExactEntries(entries, COVERAGE_PAIR_FILENAMES)) {
       candidates.set(suite, {
-        error: `${source.name} coverage pair for ${suite} must contain exactly ${expectedNames.join(", ")}`,
+        error: `${source.name} coverage pair for ${suite} must contain exactly ${COVERAGE_PAIR_FILENAMES.join(", ")}`,
       });
       continue;
     }
 
-    const lcovPath = join(pairDirectory, "lcov.info");
-    const manifestPath = join(pairDirectory, COVERAGE_MANIFEST_FILENAME);
-    try {
-      const lcov = readFileSync(lcovPath);
-      const manifestBytes = readFileSync(manifestPath);
-      const manifest = validateCoverageManifestBytes(
-        {
-          root: options.root,
-          lcovPath,
-          manifestPath,
-          descriptor: expected.descriptor,
-          repository: options.repository,
-          revision: options.revision,
-          expectedRun: options.expectedRun,
-          expectedCollectorVersion: expected.expectedCollectorVersion,
-        },
-        lcov,
-        manifestBytes,
-      );
-      candidates.set(suite, {
-        pair: {
-          source: source.name,
-          lcov,
-          manifestBytes,
-          manifest,
-        },
-      });
-    } catch (error) {
-      candidates.set(suite, {
-        error: `${source.name} coverage pair for ${suite} is invalid: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      });
-    }
+    candidates.set(suite, inspectProvenancePair(source.name, pairDirectory, expected, options));
   }
   return candidates;
 }
 
 function selectArtifacts(
-  candidatesBySource: readonly ReadonlyMap<string, Candidate>[],
+  candidatesBySource: readonly ReadonlyMap<string, ProvenancePairCandidate>[],
   options: PrepareProvenanceArtifactsOptions,
 ): SelectedPair[] {
   return options.expectedSuites.map((expected) => {
     const suite = expected.descriptor.suite;
     const candidates = candidatesBySource
       .map((source) => source.get(suite))
-      .filter((candidate): candidate is Candidate => candidate !== undefined);
+      .filter((candidate): candidate is ProvenancePairCandidate => candidate !== undefined);
     const valid = candidates
       .map((candidate) => candidate.pair)
-      .filter((pair): pair is ValidPair => pair !== undefined);
+      .filter((pair): pair is ValidProvenancePair => pair !== undefined);
     if (valid.length === 0) {
       const diagnostics = candidates
         .map((candidate) => candidate.error)
