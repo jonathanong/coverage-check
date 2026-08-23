@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   assertSafePathComponent,
   assertValidRepo,
@@ -10,6 +10,12 @@ import {
   FileSystemSuiteStore,
   isNewerTimestamp,
 } from "./suite-store.mts";
+import {
+  baselineSnapshotObjectName,
+  baselineSnapshotPayloadObjectName,
+  createBaselineSnapshot,
+  hashBaselineSnapshotPayload,
+} from "./baseline-snapshot.mts";
 
 describe("FileSystemSuiteStore", () => {
   let tmpDir: string;
@@ -62,6 +68,110 @@ describe("FileSystemSuiteStore", () => {
     it("rethrows non-ENOENT errors", async () => {
       const badStore = new FileSystemSuiteStore("\0invalid");
       await expect(badStore.list()).rejects.toThrow();
+    });
+
+    it("does not expose root-level snapshot metadata as a suite", async () => {
+      const snapshot = createBaselineSnapshot("key", "main", []);
+      await store.putBaselineSnapshotIfAbsent("key", snapshot);
+      expect(await store.list()).not.toContain(baselineSnapshotObjectName("key"));
+    });
+  });
+
+  describe("baseline snapshots", () => {
+    it("resolves versioned, legacy, and absent suites", async () => {
+      await store.put("versioned", Buffer.from("versioned"), { sha: "abc", branch: "main" });
+      await store.put("legacy", Buffer.from("legacy"));
+
+      expect(await store.resolveVersion("versioned", "main")).toEqual({
+        kind: "sha",
+        sha: "abc",
+      });
+      expect(await store.resolveVersion("legacy", "main")).toEqual({ kind: "legacy" });
+      expect(await store.resolveVersion("missing", "main")).toBeNull();
+    });
+
+    it("propagates invalid branch pointer errors while resolving a version", async () => {
+      const pointerDir = join(tmpDir, "broken", "branch", encodeBranchName("main"));
+      mkdirSync(pointerDir, { recursive: true });
+      writeFileSync(join(pointerDir, "latest.json"), "not json");
+      await expect(store.resolveVersion("broken", "main")).rejects.toThrow();
+    });
+
+    it("atomically keeps the first snapshot for a key", async () => {
+      const firstPayloadHash = hashBaselineSnapshotPayload(Buffer.from("one"));
+      const secondPayloadHash = hashBaselineSnapshotPayload(Buffer.from("two"));
+      const first = createBaselineSnapshot("key", "main", [
+        { suite: "backend", sha: "one", payloadHash: firstPayloadHash },
+      ]);
+      const second = createBaselineSnapshot("key", "main", [
+        { suite: "backend", sha: "two", payloadHash: secondPayloadHash },
+      ]);
+
+      expect(await store.putBaselineSnapshotIfAbsent("key", first)).toMatchObject({
+        created: true,
+        snapshot: first,
+      });
+      expect(await store.putBaselineSnapshotIfAbsent("key", second)).toMatchObject({
+        created: false,
+        snapshot: first,
+      });
+      expect(await store.readBaselineSnapshot("key")).toEqual(first);
+      expect(await store.readBaselineSnapshot("missing")).toBeNull();
+    });
+
+    it("stores immutable snapshot payloads by content hash", async () => {
+      const payload = Buffer.from("baseline");
+      const payloadHash = hashBaselineSnapshotPayload(payload);
+      await store.putBaselineSnapshotPayloadIfAbsent(payloadHash, payload);
+      await store.putBaselineSnapshotPayloadIfAbsent(payloadHash, Buffer.from("baseline"));
+
+      expect(await store.readBaselineSnapshotPayload(payloadHash)).toEqual(payload);
+      expect(readFileSync(join(tmpDir, baselineSnapshotPayloadObjectName(payloadHash)))).toEqual(
+        payload,
+      );
+      await expect(
+        store.putBaselineSnapshotPayloadIfAbsent(payloadHash, Buffer.from("replacement")),
+      ).rejects.toThrow("content hash");
+      expect(
+        await store.readBaselineSnapshotPayload(
+          hashBaselineSnapshotPayload(Buffer.from("missing")),
+        ),
+      ).toBeNull();
+    });
+
+    it("propagates snapshot and immutable-payload read errors", async () => {
+      mkdirSync(join(tmpDir, baselineSnapshotObjectName("bad")));
+      const payloadHash = hashBaselineSnapshotPayload(Buffer.from("bad"));
+      mkdirSync(join(tmpDir, baselineSnapshotPayloadObjectName(payloadHash)));
+      await expect(store.readBaselineSnapshot("bad")).rejects.toThrow();
+      await expect(store.readBaselineSnapshotPayload(payloadHash)).rejects.toThrow();
+    });
+
+    it("fails if a conflicting snapshot disappears before it can be read", async () => {
+      const snapshot = createBaselineSnapshot("key", "main", []);
+      await store.putBaselineSnapshotIfAbsent("key", snapshot);
+      vi.spyOn(store, "readBaselineSnapshot").mockResolvedValueOnce(null);
+      await expect(store.putBaselineSnapshotIfAbsent("key", snapshot)).rejects.toThrow(
+        "disappeared after create conflict",
+      );
+    });
+
+    it("propagates non-conflict snapshot and payload write errors", async () => {
+      const lockedRoot = join(tmpDir, "locked");
+      mkdirSync(lockedRoot);
+      chmodSync(lockedRoot, 0o500);
+      const lockedStore = new FileSystemSuiteStore(lockedRoot);
+      const snapshot = createBaselineSnapshot("key", "main", []);
+      const payload = Buffer.from("baseline");
+      const payloadHash = hashBaselineSnapshotPayload(payload);
+      try {
+        await expect(lockedStore.putBaselineSnapshotIfAbsent("key", snapshot)).rejects.toThrow();
+        await expect(
+          lockedStore.putBaselineSnapshotPayloadIfAbsent(payloadHash, payload),
+        ).rejects.toThrow();
+      } finally {
+        chmodSync(lockedRoot, 0o700);
+      }
     });
   });
 

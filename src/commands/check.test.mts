@@ -17,6 +17,7 @@ describe("main argument validation", () => {
       expect(output).toContain("--advisory");
       expect(output).toContain("--json <path|->");
       expect(output).toContain("--no-summary-file");
+      expect(output).toContain("--baseline-snapshot-key");
     } finally {
       writeSpy.mockRestore();
     }
@@ -122,6 +123,14 @@ describe("main argument validation", () => {
     ]);
     expect(args.activeSuites).toEqual(["backend", "web"]);
     expect(args.dropOnly).toBe(true);
+  });
+
+  it("parses an opt-in baseline snapshot key without changing the default", () => {
+    expect(parseCheckArgs([]).baselineSnapshotKey).toBeNull();
+    expect(
+      parseCheckArgs(["--baseline-snapshot-key", "owner/repo:pr-39:head"]).baselineSnapshotKey,
+    ).toBe("owner/repo:pr-39:head");
+    expect(() => parseCheckArgs(["--baseline-snapshot-key", ""])).toThrow();
   });
 
   it("rejects single-suite and active-suite modes together", () => {
@@ -1833,6 +1842,205 @@ describe("with a real git repo and a known diff", () => {
     expect(result.drops).toHaveLength(1);
     expect(result.drops[0].passed).toBe(true);
     expect(result.drops[0].skipped).toBe(false);
+  });
+
+  it("pins per-suite baselines across reruns while a new key follows the advanced pointer", async () => {
+    const snapshotRules = join(tmpDir, "rules-snapshot.yml");
+    writeFileSync(
+      snapshotRules,
+      "rules:\n  - paths: backend/**\n    patch_coverage_min: 0\n    no_coverage_drop: true\n",
+    );
+    const snapshotStoreDir = join(tmpDir, "store-snapshot");
+    mkdirSync(snapshotStoreDir);
+    const snapshotStore = new FileSystemSuiteStore(snapshotStoreDir);
+    await snapshotStore.put(
+      "backend",
+      Buffer.from("SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n"),
+      { sha: "old-main", branch: "main" },
+    );
+    const freshDir = join(artifactsDir, "coverage-backend");
+    mkdirSync(freshDir);
+    writeFileSync(
+      join(freshDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n",
+    );
+    const args = {
+      rules: snapshotRules,
+      artifacts: artifactsDir,
+      base: "NOT_NEEDED",
+      head: "NOT_NEEDED",
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: snapshotStore,
+      suite: null,
+      activeSuites: ["backend"],
+      dropOnly: true,
+      baselineSnapshotKey: "owner/repo:pr-39:same-head",
+    };
+
+    const first = await evaluateCheck(args);
+    expect(first.result?.drops[0]).toMatchObject({ baselinePct: 100, currentPct: 50 });
+    expect(first.warnings.join("\n")).toContain("baseline snapshot created");
+
+    await snapshotStore.put(
+      "backend",
+      Buffer.from("SF:backend/foo.mts\nDA:1,1\nDA:2,0\nend_of_record\n"),
+      { sha: "new-main", branch: "main" },
+    );
+    const rerun = await evaluateCheck(args);
+    expect(rerun.result?.drops[0]).toMatchObject({ baselinePct: 100, currentPct: 50 });
+    expect(rerun.warnings.join("\n")).toContain("baseline snapshot reused");
+
+    const newHead = await evaluateCheck({
+      ...args,
+      baselineSnapshotKey: "owner/repo:pr-39:new-head",
+    });
+    expect(newHead.result?.drops[0]).toMatchObject({
+      baselinePct: 50,
+      currentPct: 50,
+      passed: true,
+    });
+  });
+
+  it("uses pinned stored suites in backwards-compatible single-suite mode", async () => {
+    const snapshotStore = new FileSystemSuiteStore(join(tmpDir, "single-suite-snapshot-store"));
+    const covered = Buffer.from("SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n");
+    await snapshotStore.put("backend", covered, { sha: "backend", branch: "main" });
+    await snapshotStore.put(
+      "frontend",
+      Buffer.from("SF:frontend/foo.mts\nDA:1,1\nend_of_record\n"),
+      { sha: "frontend", branch: "main" },
+    );
+    writeFileSync(join(artifactsDir, "lcov.info"), covered);
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: snapshotStore,
+      suite: "backend",
+      baselineSnapshotKey: "single-suite",
+    });
+    expect(evaluated.exitCode).toBe(0);
+    expect(evaluated.warnings.join("\n")).toContain("baseline snapshot created");
+  });
+
+  it("supports an empty pinned baseline in single-suite mode", async () => {
+    const emptyStore = new FileSystemSuiteStore(join(tmpDir, "empty-snapshot-store"));
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: emptyStore,
+      suite: "backend",
+      baselineSnapshotKey: "empty",
+    });
+    expect(evaluated.exitCode).toBe(0);
+  });
+
+  it("requires a store when baseline snapshot pinning is requested", async () => {
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+      baselineSnapshotKey: "key",
+    });
+    expect(evaluated.exitCode).toBe(2);
+    expect(evaluated.skippedReason).toContain("requires a suite store");
+  });
+
+  it("fails closed when snapshot pinning is requested from an unsupported store", async () => {
+    const unsupportedStore = {
+      async list() {
+        return [];
+      },
+      async get(): Promise<Buffer | null> {
+        return null;
+      },
+      async put(): Promise<void> {},
+    };
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: unsupportedStore,
+      suite: null,
+      baselineSnapshotKey: "key",
+    });
+    expect(evaluated.exitCode).toBe(2);
+    expect(evaluated.skippedReason).toContain("does not support baseline snapshots");
+  });
+
+  it("fails closed when a pinned payload is not valid LCOV", async () => {
+    const corruptStore = new FileSystemSuiteStore(join(tmpDir, "corrupt-snapshot-store"));
+    await corruptStore.put("backend", Buffer.from("not lcov"), {
+      sha: "corrupt",
+      branch: "main",
+    });
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: corruptStore,
+      suite: null,
+      activeSuites: ["backend"],
+      baselineSnapshotKey: "key",
+    });
+    expect(evaluated.exitCode).toBe(2);
+    expect(evaluated.skippedReason).toContain("malformed baseline snapshot LCOV");
+  });
+
+  it("fails closed instead of pinning a mutable legacy suite", async () => {
+    const legacyStore = new FileSystemSuiteStore(join(tmpDir, "legacy-snapshot-store"));
+    await legacyStore.put("backend", Buffer.from("SF:backend/foo.mts\nDA:1,1\nend_of_record\n"));
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: legacyStore,
+      suite: null,
+      baselineSnapshotKey: "key",
+    });
+    expect(evaluated.exitCode).toBe(2);
+    expect(evaluated.skippedReason).toContain("mutable legacy layout");
   });
 
   it("returns exit code 1 and includes failing drop in JSON when baseline is higher than current", async () => {

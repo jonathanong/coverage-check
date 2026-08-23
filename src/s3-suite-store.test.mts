@@ -4,7 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { S3SuiteStore } from "./s3-suite-store.mts";
 import { sendS3 } from "./s3-diagnostics.mts";
+import { isConditionalWriteConflict } from "./s3-utils.mts";
 import { encodeBranchName } from "./suite-store.mts";
+import {
+  baselineSnapshotObjectName,
+  baselineSnapshotPayloadObjectName,
+  createBaselineSnapshot,
+  hashBaselineSnapshotPayload,
+  serializeBaselineSnapshot,
+} from "./baseline-snapshot.mts";
 
 function makeClient(sendImpl: (cmd: unknown) => Promise<unknown>) {
   return { send: vi.fn(sendImpl) };
@@ -81,6 +89,191 @@ describe("S3SuiteStore — list()", () => {
     expect(client.send).toHaveBeenCalledTimes(2);
     const secondCmd = client.send.mock.calls[1][0] as ListObjectsV2Command;
     expect(secondCmd.input.ContinuationToken).toBe("token-xyz");
+  });
+});
+
+describe("S3SuiteStore — baseline snapshots", () => {
+  const payload = Buffer.from("baseline");
+  const payloadHash = hashBaselineSnapshotPayload(payload);
+
+  it("resolves the branch pointer without fetching its payload", async () => {
+    const client = makeClient(async () => ({ Body: Buffer.from(POINTER) }));
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    expect(await store.resolveVersion("backend", "main")).toEqual({
+      kind: "sha",
+      sha: "abc123",
+    });
+    expect(client.send).toHaveBeenCalledOnce();
+  });
+
+  it("resolves legacy and absent suites after branch pointers are missing", async () => {
+    let calls = 0;
+    const legacyStore = new S3SuiteStore({
+      bucket: BUCKET,
+      prefix: PREFIX,
+      client: makeClient(async () => {
+        calls++;
+        if (calls < 3) return notFound();
+        return { Body: Buffer.from(LCOV) };
+      }),
+    });
+    expect(await legacyStore.resolveVersion("backend", "main")).toEqual({ kind: "legacy" });
+
+    const absentStore = new S3SuiteStore({
+      bucket: BUCKET,
+      prefix: PREFIX,
+      client: makeClient(async () => notFound()),
+    });
+    expect(await absentStore.resolveVersion("backend", "main")).toBeNull();
+  });
+
+  it("propagates non-missing version and snapshot read errors", async () => {
+    const error = new Error("network error");
+    const store = new S3SuiteStore({
+      bucket: BUCKET,
+      prefix: PREFIX,
+      client: makeClient(async () => Promise.reject(error)),
+    });
+    await expect(store.resolveVersion("backend", "main")).rejects.toThrow("network error");
+    await expect(store.readBaselineSnapshot("key")).rejects.toThrow("network error");
+    await expect(store.readBaselineSnapshotPayload(payloadHash)).rejects.toThrow("network error");
+  });
+
+  it("writes a snapshot conditionally and reads it back", async () => {
+    const snapshot = createBaselineSnapshot("key", "main", [
+      { suite: "backend", sha: "abc", payloadHash },
+    ]);
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof GetObjectCommand) {
+        return { Body: serializeBaselineSnapshot(snapshot) };
+      }
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+
+    expect(await store.putBaselineSnapshotIfAbsent("key", snapshot)).toEqual({
+      snapshot,
+      created: true,
+    });
+    const put = client.send.mock.calls[0][0] as PutObjectCommand;
+    expect(put.input.IfNoneMatch).toBe("*");
+    expect(put.input.Key).toBe(`${PREFIX}/${baselineSnapshotObjectName("key")}`);
+    expect(await store.readBaselineSnapshot("key")).toEqual(snapshot);
+  });
+
+  it("returns the first writer's snapshot after a conditional conflict", async () => {
+    const winner = createBaselineSnapshot("key", "main", [
+      { suite: "backend", sha: "winner", payloadHash },
+    ]);
+    const loser = createBaselineSnapshot("key", "main", [
+      { suite: "backend", sha: "loser", payloadHash },
+    ]);
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof PutObjectCommand) {
+        const error = new Error("precondition failed");
+        error.name = "PreconditionFailed";
+        throw error;
+      }
+      return { Body: serializeBaselineSnapshot(winner) };
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+
+    expect(await store.putBaselineSnapshotIfAbsent("key", loser)).toEqual({
+      snapshot: winner,
+      created: false,
+    });
+  });
+
+  it("fails when a snapshot write conflicts but the winner is missing", async () => {
+    const snapshot = createBaselineSnapshot("key", "main", []);
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof PutObjectCommand) {
+        const error = new Error("precondition failed");
+        error.name = "PreconditionFailed";
+        throw error;
+      }
+      return notFound();
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(store.putBaselineSnapshotIfAbsent("key", snapshot)).rejects.toThrow(
+      "missing after create conflict",
+    );
+  });
+
+  it("propagates non-conditional snapshot and payload write errors", async () => {
+    const error = new Error("network error");
+    const store = new S3SuiteStore({
+      bucket: BUCKET,
+      prefix: PREFIX,
+      client: makeClient(async () => Promise.reject(error)),
+    });
+    const snapshot = createBaselineSnapshot("key", "main", []);
+    await expect(store.putBaselineSnapshotIfAbsent("key", snapshot)).rejects.toThrow(
+      "network error",
+    );
+    await expect(store.putBaselineSnapshotPayloadIfAbsent(payloadHash, payload)).rejects.toThrow(
+      "network error",
+    );
+  });
+
+  it("returns null for a missing snapshot", async () => {
+    const store = new S3SuiteStore({
+      bucket: BUCKET,
+      prefix: PREFIX,
+      client: makeClient(async () => notFound()),
+    });
+    expect(await store.readBaselineSnapshot("missing")).toBeNull();
+  });
+
+  it("writes and reads immutable snapshot payloads by content hash", async () => {
+    const client = makeClient(async (cmd) => {
+      if (cmd instanceof GetObjectCommand) return { Body: payload };
+      return {};
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+
+    await store.putBaselineSnapshotPayloadIfAbsent(payloadHash, payload);
+    const put = client.send.mock.calls[0][0] as PutObjectCommand;
+    expect(put.input.IfNoneMatch).toBe("*");
+    expect(put.input.Key).toBe(`${PREFIX}/${baselineSnapshotPayloadObjectName(payloadHash)}`);
+    expect(await store.readBaselineSnapshotPayload(payloadHash)).toEqual(payload);
+    await expect(
+      store.putBaselineSnapshotPayloadIfAbsent(payloadHash, Buffer.from("replacement")),
+    ).rejects.toThrow("content hash");
+  });
+
+  it("accepts an existing immutable payload after a conditional conflict", async () => {
+    const client = makeClient(async () => {
+      const error = new Error("precondition failed");
+      error.name = "PreconditionFailed";
+      throw error;
+    });
+    const store = new S3SuiteStore({ bucket: BUCKET, prefix: PREFIX, client });
+    await expect(store.putBaselineSnapshotPayloadIfAbsent(payloadHash, payload)).resolves.toBe(
+      undefined,
+    );
+  });
+
+  it("returns null for a missing immutable payload", async () => {
+    const store = new S3SuiteStore({
+      bucket: BUCKET,
+      prefix: PREFIX,
+      client: makeClient(async () => notFound()),
+    });
+    expect(await store.readBaselineSnapshotPayload(payloadHash)).toBeNull();
+  });
+});
+
+describe("isConditionalWriteConflict", () => {
+  it("recognizes supported names and HTTP statuses", () => {
+    expect(isConditionalWriteConflict("not an error")).toBe(false);
+    const named = new Error();
+    named.name = "ConditionalRequestConflict";
+    expect(isConditionalWriteConflict(named)).toBe(true);
+    for (const httpStatusCode of [409, 412]) {
+      const statusError = Object.assign(new Error(), { $metadata: { httpStatusCode } });
+      expect(isConditionalWriteConflict(statusError)).toBe(true);
+    }
   });
 });
 

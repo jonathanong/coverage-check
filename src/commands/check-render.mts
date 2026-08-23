@@ -14,6 +14,7 @@ Options:
   --store <path>                 Alias for --store-fs
   --store-s3 <bucket[/prefix]>   S3 suite store
   --branch <name>                Branch pointer to follow when reading from the store (default: main)
+  --baseline-snapshot-key <key>  Pin per-suite baseline SHAs under an immutable snapshot key
   --suite <name>                 Name of the current suite
   --active-suite <name>          Active suite in a multi-suite overlay (repeatable)
   --strip-prefix <prefix>        Extra path prefix to strip from LCOV SF: lines (repeatable)

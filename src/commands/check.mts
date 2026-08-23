@@ -12,6 +12,12 @@ import { collapseRanges, renderFailureComment } from "../report.mts";
 import { upsertComment } from "../github-comment.mts";
 import { collectLcovFiles, buildStripPrefixes } from "../load-artifacts.mts";
 import { writeSummary } from "../step-summary.mts";
+import { assertValidBaselineSnapshotKey } from "../baseline-snapshot.mts";
+import {
+  decodeBaselineSnapshotLcov,
+  formatBaselineSnapshotDiagnostic,
+  loadBaselineSnapshot,
+} from "../baseline-snapshot-loader.mts";
 import { assertSafePathComponent } from "../suite-store.mts";
 import { parseCheckArgs } from "./check-args.mts";
 import { checkHelp } from "./check-render.mts";
@@ -51,12 +57,18 @@ type LoadedActiveSuiteCoverage = {
   parsedSources: { name: string; lcov: LcovData }[];
 };
 
+type StoredSuiteCoverage = { suite: string; lcov: LcovData };
+
 function validateCheckArgs(args: CheckArgs): void {
   const activeSuites = args.activeSuites ?? [];
   if (args.suite !== null && activeSuites.length > 0) {
     throw new Error("suite and activeSuites are mutually exclusive");
   }
   for (const suite of activeSuites) assertSafePathComponent(suite, "suite");
+  if (args.baselineSnapshotKey !== undefined && args.baselineSnapshotKey !== null) {
+    assertValidBaselineSnapshotKey(args.baselineSnapshotKey);
+    if (args.store === null) throw new Error("baselineSnapshotKey requires a suite store");
+  }
 }
 
 function suiteName(lcovPath: string, artifacts: string): string {
@@ -75,6 +87,7 @@ async function loadActiveSuiteCoverage(
   args: CheckArgs,
   branch: string,
   stripPrefixes: string[],
+  pinnedStoredSuites?: StoredSuiteCoverage[],
 ): Promise<LoadedActiveSuiteCoverage> {
   const activeSuites = new Set(args.activeSuites!);
   const freshBySuite = new Map<string, LcovData[]>();
@@ -90,8 +103,10 @@ async function loadActiveSuiteCoverage(
   }));
   const freshSuiteNames = new Set(freshSuites.map(({ suite }) => suite));
 
-  const storedSuites: { suite: string; lcov: LcovData }[] = [];
-  if (args.store !== null) {
+  const storedSuites: StoredSuiteCoverage[] = [];
+  if (pinnedStoredSuites !== undefined) {
+    storedSuites.push(...pinnedStoredSuites);
+  } else if (args.store !== null) {
     const loaded = await Promise.all(
       [...activeSuites].map(async (suite) => {
         const buffer = await args.store!.get(suite, { branch });
@@ -199,10 +214,30 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
   const parsedSources: { name: string; lcov: LcovData }[] = [];
   const activeSuiteMode = (args.activeSuites?.length ?? 0) > 0;
   let baseline: LcovData | null = null;
+  let pinnedStoredSuites: StoredSuiteCoverage[] | undefined;
+  let baselineSnapshotDiagnostic: string | null = null;
+
+  if (args.baselineSnapshotKey !== undefined && args.baselineSnapshotKey !== null) {
+    try {
+      const loaded = await loadBaselineSnapshot(
+        args.store!,
+        args.baselineSnapshotKey,
+        branch,
+        activeSuiteMode ? args.activeSuites : undefined,
+      );
+      pinnedStoredSuites = loaded.suites.map(({ suite, buffer }) => ({
+        suite,
+        lcov: parseLcov(decodeBaselineSnapshotLcov(buffer), stripPrefixes),
+      }));
+      baselineSnapshotDiagnostic = formatBaselineSnapshotDiagnostic(loaded);
+    } catch (err) {
+      return emptyEvaluation(2, `failed to load baseline snapshot: ${err}`);
+    }
+  }
 
   if (activeSuiteMode) {
     try {
-      const loaded = await loadActiveSuiteCoverage(args, branch, stripPrefixes);
+      const loaded = await loadActiveSuiteCoverage(args, branch, stripPrefixes, pinnedStoredSuites);
       reports.push(...loaded.reports);
       suiteSources.push(...loaded.suiteSources);
       parsedSources.push(...loaded.parsedSources);
@@ -211,7 +246,14 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
       return emptyEvaluation(2, `failed to load multi-suite coverage: ${err}`);
     }
   } else {
-    if (args.store !== null) {
+    if (pinnedStoredSuites !== undefined) {
+      for (const { suite, lcov } of pinnedStoredSuites) {
+        if (suite === args.suite) continue;
+        reports.push(lcov);
+        suiteSources.push({ suite, source: "store", lcov });
+        parsedSources.push({ name: `suite '${suite}'`, lcov });
+      }
+    } else if (args.store !== null) {
       const suites = await args.store.list();
       for (const suite of suites) {
         if (suite === args.suite) continue;
@@ -291,8 +333,13 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
   }
 
   const warnings = args.dropOnly ? [] : nonContributingWarnings(parsedSources, diff);
+  if (baselineSnapshotDiagnostic !== null) warnings.push(baselineSnapshotDiagnostic);
 
-  if (!activeSuiteMode && args.store !== null) {
+  if (!activeSuiteMode && pinnedStoredSuites !== undefined) {
+    if (pinnedStoredSuites.length > 0) {
+      baseline = mergeLcov(pinnedStoredSuites.map(({ lcov }) => lcov));
+    }
+  } else if (!activeSuiteMode && args.store !== null) {
     try {
       const suites = await args.store.list();
       const baselineReports = (

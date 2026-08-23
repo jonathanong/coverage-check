@@ -1,6 +1,19 @@
+// oxlint-disable max-lines -- filesystem suite and snapshot storage share validation and layout
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  baselineSnapshotObjectName,
+  baselineSnapshotPayloadObjectName,
+  hashBaselineSnapshotPayload,
+  parseBaselineSnapshotBuffer,
+  serializeBaselineSnapshot,
+} from "./baseline-snapshot.mts";
 import type { SuiteMeta } from "./types.mts";
+import type {
+  BaselineSnapshot,
+  BaselineSnapshotWriteResult,
+  ResolvedSuiteVersion,
+} from "./baseline-snapshot.mts";
 
 export function assertSafePathComponent(value: string, label: string): void {
   if (
@@ -68,6 +81,28 @@ export interface SuiteStore {
   put(suite: string, lcov: Buffer, meta?: SuitePutMeta): Promise<void>;
 }
 
+export interface SnapshotSuiteStore extends SuiteStore {
+  resolveVersion(suite: string, branch: string): Promise<ResolvedSuiteVersion | null>;
+  readBaselineSnapshot(key: string): Promise<BaselineSnapshot | null>;
+  putBaselineSnapshotIfAbsent(
+    key: string,
+    snapshot: BaselineSnapshot,
+  ): Promise<BaselineSnapshotWriteResult>;
+  readBaselineSnapshotPayload(payloadHash: string): Promise<Buffer | null>;
+  putBaselineSnapshotPayloadIfAbsent(payloadHash: string, payload: Buffer): Promise<void>;
+}
+
+export function isSnapshotSuiteStore(store: SuiteStore): store is SnapshotSuiteStore {
+  const candidate = store as Partial<SnapshotSuiteStore>;
+  return (
+    typeof candidate.resolveVersion === "function" &&
+    typeof candidate.readBaselineSnapshot === "function" &&
+    typeof candidate.putBaselineSnapshotIfAbsent === "function" &&
+    typeof candidate.readBaselineSnapshotPayload === "function" &&
+    typeof candidate.putBaselineSnapshotPayloadIfAbsent === "function"
+  );
+}
+
 /**
  * Filesystem-backed SuiteStore.
  *
@@ -80,7 +115,7 @@ export interface SuiteStore {
  *
  * Transport is the caller's responsibility (e.g. S3 sync, git orphan branch).
  */
-export class FileSystemSuiteStore implements SuiteStore {
+export class FileSystemSuiteStore implements SnapshotSuiteStore {
   private readonly root: string;
   constructor(root: string) {
     this.root = root;
@@ -149,6 +184,72 @@ export class FileSystemSuiteStore implements SuiteStore {
     writeFileSync(pointerPath, JSON.stringify({ sha, timestamp }, null, 2));
   }
 
+  async resolveVersion(suite: string, branch: string): Promise<ResolvedSuiteVersion | null> {
+    assertSafePathComponent(suite, "suite");
+    const pointerPaths = [
+      join(this.root, suite, "branch", encodeBranchName(branch), "latest.json"),
+      join(this.root, suite, "branch", branch, "latest.json"),
+    ];
+    try {
+      const pointer = readPointerFile(pointerPaths);
+      assertSafePathComponent(pointer.sha, "sha");
+      return { kind: "sha", sha: pointer.sha };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      return this.getLegacy(suite) === null ? null : { kind: "legacy" };
+    }
+  }
+
+  async readBaselineSnapshot(key: string): Promise<BaselineSnapshot | null> {
+    const path = this.baselineSnapshotPath(key);
+    try {
+      return parseBaselineSnapshotBuffer(readFileSync(path));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  }
+
+  async putBaselineSnapshotIfAbsent(
+    key: string,
+    snapshot: BaselineSnapshot,
+  ): Promise<BaselineSnapshotWriteResult> {
+    const path = this.baselineSnapshotPath(key);
+    mkdirSync(this.root, { recursive: true });
+    try {
+      writeFileSync(path, serializeBaselineSnapshot(snapshot), { flag: "wx" });
+      return { snapshot, created: true };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      const existing = await this.readBaselineSnapshot(key);
+      if (existing === null) throw new Error("baseline snapshot disappeared after create conflict");
+      return { snapshot: existing, created: false };
+    }
+  }
+
+  async readBaselineSnapshotPayload(payloadHash: string): Promise<Buffer | null> {
+    const path = this.baselineSnapshotPayloadPath(payloadHash);
+    try {
+      return readFileSync(path);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  }
+
+  async putBaselineSnapshotPayloadIfAbsent(payloadHash: string, payload: Buffer): Promise<void> {
+    if (hashBaselineSnapshotPayload(payload) !== payloadHash) {
+      throw new Error("baseline snapshot payload does not match its content hash");
+    }
+    const path = this.baselineSnapshotPayloadPath(payloadHash);
+    mkdirSync(this.root, { recursive: true });
+    try {
+      writeFileSync(path, payload, { flag: "wx" });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+  }
+
   private getLegacy(suite: string): Buffer | null {
     try {
       return readFileSync(join(this.root, suite, "lcov.info"));
@@ -156,6 +257,14 @@ export class FileSystemSuiteStore implements SuiteStore {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw err;
     }
+  }
+
+  private baselineSnapshotPath(key: string): string {
+    return join(this.root, baselineSnapshotObjectName(key));
+  }
+
+  private baselineSnapshotPayloadPath(payloadHash: string): string {
+    return join(this.root, baselineSnapshotPayloadObjectName(payloadHash));
   }
 
   private shouldWritePointer(pointerPath: string, incomingTimestamp: string): boolean {
