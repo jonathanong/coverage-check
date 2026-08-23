@@ -1904,6 +1904,74 @@ describe("with a real git repo and a known diff", () => {
     });
   });
 
+  it("uses pinned stored suites in backwards-compatible single-suite mode", async () => {
+    const snapshotStore = new FileSystemSuiteStore(join(tmpDir, "single-suite-snapshot-store"));
+    const covered = Buffer.from("SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n");
+    await snapshotStore.put("backend", covered, { sha: "backend", branch: "main" });
+    await snapshotStore.put(
+      "frontend",
+      Buffer.from("SF:frontend/foo.mts\nDA:1,1\nend_of_record\n"),
+      { sha: "frontend", branch: "main" },
+    );
+    writeFileSync(join(artifactsDir, "lcov.info"), covered);
+
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: snapshotStore,
+      suite: "backend",
+      baselineSnapshotKey: "single-suite",
+    });
+    expect(evaluated.exitCode).toBe(0);
+    expect(evaluated.warnings.join("\n")).toContain("baseline snapshot created");
+  });
+
+  it("supports an empty pinned baseline in single-suite mode", async () => {
+    const emptyStore = new FileSystemSuiteStore(join(tmpDir, "empty-snapshot-store"));
+    writeFileSync(
+      join(artifactsDir, "lcov.info"),
+      "SF:backend/foo.mts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    );
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: emptyStore,
+      suite: "backend",
+      baselineSnapshotKey: "empty",
+    });
+    expect(evaluated.exitCode).toBe(0);
+  });
+
+  it("requires a store when baseline snapshot pinning is requested", async () => {
+    const evaluated = await evaluateCheck({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: headSha,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+      baselineSnapshotKey: "key",
+    });
+    expect(evaluated.exitCode).toBe(2);
+    expect(evaluated.skippedReason).toContain("requires a suite store");
+  });
+
   it("fails closed when snapshot pinning is requested from an unsupported store", async () => {
     const unsupportedStore = {
       async list() {

@@ -71,4 +71,22 @@ describe("baseline snapshots", () => {
       "invalid baseline snapshot",
     );
   });
+
+  it("rejects every malformed manifest field", () => {
+    const valid = {
+      version: 1,
+      key: "key",
+      branch: "main",
+      createdAt: new Date().toISOString(),
+      suites: [],
+    };
+    expect(() => parseBaselineSnapshot(null)).toThrow("must be an object");
+    expect(() => parseBaselineSnapshot([])).toThrow("must be an object");
+    expect(() => parseBaselineSnapshot({ ...valid, version: 2 })).toThrow("version");
+    expect(() => parseBaselineSnapshot({ ...valid, key: 1 })).toThrow("snapshot key");
+    expect(() => parseBaselineSnapshot({ ...valid, branch: "" })).toThrow("branch");
+    expect(() => parseBaselineSnapshot({ ...valid, createdAt: "not-a-date" })).toThrow("timestamp");
+    expect(() => parseBaselineSnapshot({ ...valid, suites: null })).toThrow("suites");
+    expect(() => parseBaselineSnapshot({ ...valid, suites: [null] })).toThrow("suite entry");
+  });
 });
