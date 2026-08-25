@@ -79,3 +79,29 @@ export function mergePatchCoverageContributions(
 ): ReturnType<typeof mergeLcov> {
   return mergeLcov(lcovs.map((lcov) => parseLcov(lcov.toString("utf8"))));
 }
+
+/** Validates self-described producer completeness without a repository shard catalog. */
+export function validatePatchCoveragePartitions(
+  manifests: readonly Pick<PatchCoverageManifest, "producer">[],
+): void {
+  const groups = new Map<string, { total: number; indices: Set<number> }>();
+  for (const { producer } of manifests) {
+    let group = groups.get(producer.group);
+    if (!group) {
+      group = { total: producer.total, indices: new Set() };
+      groups.set(producer.group, group);
+    }
+    if (group.total !== producer.total) {
+      throw new Error(`Patch coverage producer group ${producer.group} has contradictory totals`);
+    }
+    if (producer.index < 1 || producer.index > group.total || group.indices.has(producer.index)) {
+      throw new Error(`Patch coverage producer group ${producer.group} has an invalid partition`);
+    }
+    group.indices.add(producer.index);
+  }
+  for (const [name, group] of groups) {
+    if (group.indices.size !== group.total) {
+      throw new Error(`Patch coverage producer group ${name} is missing partitions`);
+    }
+  }
+}

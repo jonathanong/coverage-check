@@ -28,7 +28,9 @@ For fan-in workflows, producers can replace a full LCOV file with a lossless spa
 before transporting it. `createPatchCoverageContribution()` uses the same merge-base diff semantics
 as `check`, retains changed-file `SF` records and changed-line `DA` records (including zero hits),
 and writes a version 2 `patch-lcov` manifest. The manifest binds the repository, run, revision,
-base/head, changed-line digest, collector, and producer partition. Empty contributions are valid.
+base/head, changed-line digest, collector, and producer partition. Partitions include a generic
+producer group, so fan-in validates complete shards without reconstructing a suite catalog. Empty
+contributions are valid.
 
 Consumers validate with `validatePatchCoverageContribution()` and merge the resulting payloads with
 `mergePatchCoverageContributions()` before running `check`. Do not aggregate shard percentages:

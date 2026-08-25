@@ -51,6 +51,7 @@ export {
 } from "./patch-contribution.mts";
 export {
   mergePatchCoverageContributions,
+  validatePatchCoveragePartitions,
   validatePatchCoverageContribution,
 } from "./patch-contribution-validation.mts";
 

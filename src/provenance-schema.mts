@@ -151,7 +151,9 @@ export function parsePatchCoverageManifest(raw: unknown): PatchCoverageManifest 
     !/^[0-9a-f]{40}$/.test(patch.head) ||
     typeof patch.changedLinesSha256 !== "string" ||
     !digestPattern.test(patch.changedLinesSha256) ||
-    !exactObject(producer, ["index", "total"]) ||
+    !exactObject(producer, ["group", "index", "total"]) ||
+    typeof producer.group !== "string" ||
+    !/^[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$/.test(producer.group) ||
     !positiveInteger(producer.index) ||
     !positiveInteger(producer.total) ||
     producer.index > producer.total

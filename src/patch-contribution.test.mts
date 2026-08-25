@@ -12,6 +12,7 @@ import {
   projectPatchLcov,
 } from "./patch-contribution.mts";
 import { validatePatchCoverageContribution } from "./patch-contribution-validation.mts";
+import { validatePatchCoveragePartitions } from "./patch-contribution-validation.mts";
 
 describe("patch LCOV contributions", () => {
   it("preserves the full-report patch result across overlapping shards and zero hits", () => {
@@ -98,7 +99,7 @@ describe("patch LCOV contributions", () => {
         collectorVersion: "4.1.0",
         base,
         head,
-        producer: { index: 1, total: 2 },
+        producer: { group: "web", index: 1, total: 2 },
       });
       expect(readFileSync(lcovPath, "utf8")).toBe("SF:src/a.mts\nDA:2,0\nend_of_record\n");
       expect(manifest.patch.base).toBe(base);
@@ -119,5 +120,24 @@ describe("patch LCOV contributions", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("validates complete independent producer groups without a shard catalog", () => {
+    expect(() =>
+      validatePatchCoveragePartitions([
+        { producer: { group: "web", index: 1, total: 2 } },
+        { producer: { group: "web", index: 2, total: 2 } },
+        { producer: { group: "backend", index: 1, total: 1 } },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      validatePatchCoveragePartitions([
+        { producer: { group: "web", index: 1, total: 2 } },
+        { producer: { group: "web", index: 1, total: 2 } },
+      ]),
+    ).toThrow("invalid partition");
+    expect(() =>
+      validatePatchCoveragePartitions([{ producer: { group: "web", index: 1, total: 2 } }]),
+    ).toThrow("missing partitions");
   });
 });

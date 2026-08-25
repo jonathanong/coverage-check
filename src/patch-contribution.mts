@@ -19,7 +19,7 @@ import type {
 
 export const PATCH_LCOV_ALGORITHM = "git-merge-base-diff-v1" as const;
 
-export type PatchProducerPartition = { index: number; total: number };
+export type PatchProducerPartition = { group: string; index: number; total: number };
 
 export type CreatePatchCoverageContributionOptions = {
   root: string;
@@ -65,6 +65,7 @@ function validateOptions(options: CreatePatchCoverageContributionOptions): void 
     throw new Error("Patch coverage contribution identity is incomplete");
   }
   if (
+    !/^[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$/.test(options.producer.group) ||
     !Number.isSafeInteger(options.producer.index) ||
     !Number.isSafeInteger(options.producer.total) ||
     options.producer.index < 1 ||

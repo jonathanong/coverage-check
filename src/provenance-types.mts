@@ -78,7 +78,7 @@ export type PatchCoverageManifest = {
     head: string;
     changedLinesSha256: string;
   };
-  producer: { index: number; total: number };
+  producer: { group: string; index: number; total: number };
 };
 
 export type AnyCoverageManifest = CoverageManifest | PatchCoverageManifest;
