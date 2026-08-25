@@ -22,6 +22,18 @@ coverage-check check \
 
 Exits `0` on pass, `1` on failure, `2` on configuration error.
 
+### Patch-only CI contributions
+
+For fan-in workflows, producers can replace a full LCOV file with a lossless sparse projection
+before transporting it. `createPatchCoverageContribution()` uses the same merge-base diff semantics
+as `check`, retains changed-file `SF` records and changed-line `DA` records (including zero hits),
+and writes a version 2 `patch-lcov` manifest. The manifest binds the repository, run, revision,
+base/head, changed-line digest, collector, and producer partition. Empty contributions are valid.
+
+Consumers validate with `validatePatchCoverageContribution()` and merge the resulting payloads with
+`mergePatchCoverageContributions()` before running `check`. Do not aggregate shard percentages:
+overlapping reports require line-level hit counts to preserve the patch result.
+
 ### Shared coverage scope and Vitest provider
 
 Projects can define aggregate, supplemental, and ignored coverage paths in the same rules file:
