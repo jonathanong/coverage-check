@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CoverageArtifactDescriptor } from "./provenance-types.mts";
-import type { SelectedProvenanceArtifact } from "./provenance-artifact-types.mts";
 
 export type ExpectedCollectorVersionOptions = {
   readonly coverletVersion?: string;
@@ -35,7 +34,7 @@ export function expectedCollectorVersion(
 }
 
 export function validateSwiftCollectorVersions(
-  selected: readonly SelectedProvenanceArtifact[],
+  selected: readonly { manifest: { collector: { name: string; version: string } } }[],
 ): void {
   const swiftVersions = new Set<string>();
   for (const { manifest } of selected) {
