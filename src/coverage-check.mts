@@ -54,6 +54,7 @@ export {
   validatePatchCoveragePartitions,
   validatePatchCoverageContribution,
 } from "./patch-contribution-validation.mts";
+export { preparePatchCoverageArtifacts } from "./patch-artifacts.mts";
 
 export type { CheckArgs, CheckRunResult, EvaluatedCheck } from "./commands/check.mts";
 export type { StorePutArgs } from "./commands/store-put.mts";
@@ -96,6 +97,11 @@ export type {
   PatchProducerPartition,
 } from "./patch-contribution.mts";
 export type { ValidatePatchCoverageContributionOptions } from "./patch-contribution-validation.mts";
+export type {
+  PatchCoverageArtifactSource,
+  PreparePatchCoverageArtifactsOptions,
+  SelectedPatchCoverageArtifact,
+} from "./patch-artifacts.mts";
 export type { ExpectedCollectorVersionOptions } from "./provenance-policy.mts";
 export type { PruneStaleEarlierAttemptSuitesOptions } from "./stale-attempt-prune.mts";
 
