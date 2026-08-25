@@ -56,6 +56,33 @@ export type CoverageManifest = {
   };
 };
 
+/** A patch-only LCOV projection. Unlike v1, its payload and source set may be empty. */
+export type PatchCoverageManifest = {
+  version: 2;
+  kind: "patch-lcov";
+  repository: string;
+  suite: string;
+  projects: readonly string[];
+  revision: string;
+  run: CoverageRun;
+  collector: {
+    name: string;
+    version: string;
+    settings: Readonly<Record<string, unknown>>;
+  };
+  lcov: { bytes: number; sha256: string };
+  sourceRoot: { algorithm: typeof SOURCE_ROOT_ALGORITHM; files: number; sha256: string };
+  patch: {
+    algorithm: "git-merge-base-diff-v1";
+    base: string;
+    head: string;
+    changedLinesSha256: string;
+  };
+  producer: { index: number; total: number };
+};
+
+export type AnyCoverageManifest = CoverageManifest | PatchCoverageManifest;
+
 type ManifestPaths = {
   root: string;
   lcovPath: string;

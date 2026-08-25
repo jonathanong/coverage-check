@@ -9,10 +9,11 @@ import {
   validatePathComponent,
   validateRevision,
 } from "./provenance-integrity.mts";
-import { parseCoverageManifest } from "./provenance-schema.mts";
+import { parseCoverageManifest, parsePatchCoverageManifest } from "./provenance-schema.mts";
 import {
   SOURCE_ROOT_ALGORITHM,
   type CoverageArtifactDescriptor,
+  type AnyCoverageManifest,
   type CoverageManifest,
   type StampCoverageManifestOptions,
   type ValidateCoverageManifestOptions,
@@ -21,13 +22,14 @@ import {
 export { COVERAGE_MANIFEST_FILENAME, SOURCE_ROOT_ALGORITHM } from "./provenance-types.mts";
 export {
   parseCoverageManifest,
+  parsePatchCoverageManifest,
   type CoverageArtifactDescriptor,
   type CoverageManifest,
   type StampCoverageManifestOptions,
   type ValidateCoverageManifestOptions,
 };
 
-export function serializeCoverageManifest(manifest: CoverageManifest): string {
+export function serializeCoverageManifest(manifest: AnyCoverageManifest): string {
   return `${JSON.stringify(canonicalize(manifest), null, 2)}\n`;
 }
 

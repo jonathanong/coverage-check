@@ -147,6 +147,10 @@ export async function runGitDiff(baseRef: string, headRef: string, cwd?: string)
 }
 
 /** Runs git diff and returns the parsed result. */
-export async function getChangedLines(baseRef: string, headRef: string): Promise<DiffLines> {
-  return parseDiff(await runGitDiff(baseRef, headRef));
+export async function getChangedLines(
+  baseRef: string,
+  headRef: string,
+  cwd?: string,
+): Promise<DiffLines> {
+  return parseDiff(await runGitDiff(baseRef, headRef, cwd));
 }

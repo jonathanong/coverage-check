@@ -43,6 +43,16 @@ export {
   validateSwiftCollectorVersions,
 } from "./provenance-policy.mts";
 export { pruneStaleEarlierAttemptSuites } from "./stale-attempt-prune.mts";
+export {
+  PATCH_LCOV_ALGORITHM,
+  changedLinesDigest,
+  createPatchCoverageContribution,
+  projectPatchLcov,
+} from "./patch-contribution.mts";
+export {
+  mergePatchCoverageContributions,
+  validatePatchCoverageContribution,
+} from "./patch-contribution-validation.mts";
 
 export type { CheckArgs, CheckRunResult, EvaluatedCheck } from "./commands/check.mts";
 export type { StorePutArgs } from "./commands/store-put.mts";
@@ -78,7 +88,13 @@ export type {
   ExpectedCoverageRun,
   StampCoverageManifestOptions,
   ValidateCoverageManifestOptions,
+  PatchCoverageManifest,
 } from "./provenance-types.mts";
+export type {
+  CreatePatchCoverageContributionOptions,
+  PatchProducerPartition,
+} from "./patch-contribution.mts";
+export type { ValidatePatchCoverageContributionOptions } from "./patch-contribution-validation.mts";
 export type { ExpectedCollectorVersionOptions } from "./provenance-policy.mts";
 export type { PruneStaleEarlierAttemptSuitesOptions } from "./stale-attempt-prune.mts";
 

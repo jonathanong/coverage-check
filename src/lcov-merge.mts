@@ -26,9 +26,9 @@ export function mergeLcov(reports: LcovData[]): LcovData {
 /** Serializes LcovData back to LCOV text format. */
 export function toLcov(lcov: LcovData): string {
   const lines: string[] = [];
-  for (const [file, fileLines] of lcov) {
+  for (const [file, fileLines] of [...lcov].toSorted(([a], [b]) => a.localeCompare(b))) {
     lines.push(`SF:${file}`);
-    for (const [lineNo, hits] of fileLines) {
+    for (const [lineNo, hits] of [...fileLines].toSorted(([a], [b]) => a - b)) {
       lines.push(`DA:${lineNo},${hits}`);
     }
     lines.push("end_of_record");
