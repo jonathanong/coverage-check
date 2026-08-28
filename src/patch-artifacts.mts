@@ -33,10 +33,14 @@ export type PreparePatchCoverageArtifactsOptions = {
   ) => { descriptor: CoverageArtifactDescriptor; expectedCollectorVersion?: string } | undefined;
 };
 
+/** Bounds untrusted manifest metadata before including it in a GitHub Actions annotation. */
 function boundedProducerGroup(group: string): string {
   return group.length > 80 ? `${group.slice(0, 77)}...` : group;
 }
 
+/**
+ * Applies a caller's current producer selection without discarding valid earlier-attempt work.
+ */
 function filterSelectedProducerGroups<T extends { manifest: PatchCoverageManifest }>(
   selected: readonly T[],
   expectedProducerGroups: readonly string[] | undefined,
@@ -72,6 +76,7 @@ function filterSelectedProducerGroups<T extends { manifest: PatchCoverageManifes
   });
 }
 
+/** Selects, validates, and atomically prepares patch coverage artifacts for a fan-in check. */
 export async function preparePatchCoverageArtifacts(
   options: PreparePatchCoverageArtifactsOptions,
 ): Promise<{ selected: readonly SelectedPatchCoverageArtifact[] }> {
