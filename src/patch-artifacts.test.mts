@@ -130,12 +130,22 @@ describe("preparePatchCoverageArtifacts", () => {
     root = mkdtempSync(join(tmpdir(), "patch-artifacts-"));
     add("s3", "required");
     add("s3", "stale");
+    add("s3", "short-a");
+    add("s3", "short-b");
     const staleGroup = "s".repeat(100);
     mocks.validatePatchCoverageContribution.mockImplementation(({ descriptor }) =>
       Promise.resolve(
         descriptor.suite === "required"
           ? manifest({ suite: "required", attempt: 2, group: "required" })
-          : manifest({ suite: "stale", attempt: 1, group: staleGroup, index: 1, total: 2 }),
+          : descriptor.suite === "stale"
+            ? manifest({ suite: "stale", attempt: 1, group: staleGroup, index: 1, total: 2 })
+            : manifest({
+                suite: descriptor.suite,
+                attempt: 1,
+                group: "short",
+                index: descriptor.suite === "short-a" ? 1 : 2,
+                total: 2,
+              }),
       ),
     );
     const notice = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -144,8 +154,13 @@ describe("preparePatchCoverageArtifacts", () => {
       selected: [{ suite: "required", manifest: { producer: { group: "required" } } }],
     });
     expect(existsSync(join(root, "out", "coverage-stale"))).toBe(false);
-    expect(notice).toHaveBeenCalledTimes(1);
-    expect(String(notice.mock.calls[0]?.[0])).toContain(`${"s".repeat(77)}...`);
+    expect(notice).toHaveBeenCalledTimes(2);
+    expect(notice.mock.calls.map(([message]) => String(message))).toEqual(
+      expect.arrayContaining([expect.stringContaining(`${"s".repeat(77)}...`)]),
+    );
+    expect(notice.mock.calls.map(([message]) => String(message))).toEqual(
+      expect.arrayContaining([expect.stringContaining("short")]),
+    );
     notice.mockRestore();
   });
 
