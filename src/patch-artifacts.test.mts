@@ -98,12 +98,26 @@ describe("preparePatchCoverageArtifacts", () => {
     });
   });
 
-  it("rejects conflicts and unknowns", async () => {
+  it("rejects unexpected entries, unknown suites, missing pairs, and conflicts", async () => {
+    root = mkdtempSync(join(tmpdir(), "patch-artifacts-"));
+    const unexpectedEntry = join(root, "s3", "unexpected");
+    mkdirSync(join(root, "s3"), { recursive: true });
+    writeFileSync(unexpectedEntry, "");
+    await expect(run()).rejects.toThrow("Unexpected");
+
+    rmSync(root, { recursive: true, force: true });
     root = mkdtempSync(join(tmpdir(), "patch-artifacts-"));
     const bad = join(root, "s3", "coverage-bad");
     mkdirSync(bad, { recursive: true });
     await expect(run()).rejects.toThrow("Unexpected");
 
+    rmSync(root, { recursive: true, force: true });
+    root = mkdtempSync(join(tmpdir(), "patch-artifacts-"));
+    add("s3");
+    rmSync(join(root, "s3", "coverage-s", "coverage-manifest.json"));
+    await expect(run()).rejects.toThrow("Missing patch coverage pair");
+
+    rmSync(root, { recursive: true, force: true });
     root = mkdtempSync(join(tmpdir(), "patch-artifacts-"));
     add("s3");
     add("gha");
@@ -172,6 +186,16 @@ describe("preparePatchCoverageArtifacts", () => {
     await expect(run(["required"])).rejects.toThrow(
       "Unexpected current-attempt patch coverage producer group: unexpected",
     );
+  });
+
+  it("rejects an unselected group that did not predate the current attempt", async () => {
+    root = mkdtempSync(join(tmpdir(), "patch-artifacts-"));
+    add("s3", "unexpected");
+    mocks.validatePatchCoverageContribution.mockResolvedValue(
+      manifest({ suite: "unexpected", attempt: 3, group: "unexpected" }),
+    );
+
+    await expect(run([])).rejects.toThrow("Unexpected patch coverage producer group: unexpected");
   });
 
   it("rejects a missing expected producer group", async () => {
