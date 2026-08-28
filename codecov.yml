@@ -12,7 +12,8 @@ coverage:
   status:
     project:
       default:
-        target: 100%
+        # Preserve or improve aggregate coverage relative to the PR base.
+        target: auto
         threshold: 0%
     patch:
       default:

@@ -36,6 +36,15 @@ Consumers validate with `validatePatchCoverageContribution()` and merge the resu
 `mergePatchCoverageContributions()` before running `check`. Do not aggregate shard percentages:
 overlapping reports require line-level hit counts to preserve the patch result.
 
+`preparePatchCoverageArtifacts()` selects the greatest valid attempt for each suite before it
+validates producer partitions and replaces its output. Artifact discovery can therefore remain
+run-wide across GitHub Actions reruns. Pass `expectedProducerGroups` with the producer groups from
+the current successful-job selection when a rerun intentionally narrows that selection. Expected
+groups may be reused from an earlier attempt, but still must form complete partitions. An unlisted
+group is pruned only when every selected contribution predates the current attempt; an unlisted
+current-attempt contribution fails closed. Leaving `expectedProducerGroups` unset preserves the
+existing strict behavior: every selected producer group is partition-validated.
+
 ### Shared coverage scope and Vitest provider
 
 Projects can define aggregate, supplemental, and ignored coverage paths in the same rules file:
