@@ -46,7 +46,7 @@ importers:
         version: 0.28.2
       js-yaml:
         specifier: ^5.2.1
-        version: 5.2.1
+        version: 5.3.0
       minimatch:
         specifier: ^10.1.1
         version: 10.2.6
@@ -1058,8 +1058,8 @@ packages:
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
 
-  js-yaml@5.2.1:
-    resolution: {integrity: sha512-zfLtNfQqxVqq3uaTqSkh4x4hZw3KHobGUA0fJUj4wawW8bsQLTVqpHdXSIzidh7o+4lEW36tANuAGdaFx6Zgnw==}
+  js-yaml@5.3.0:
+    resolution: {integrity: sha512-muutsYr+e2+d3rTgUGslq5rxbBlUy3cJ61IsHag2QNDQV+7zXWjkUpmALIajhrlLlrgRUiymj6U3zUr/TMK84Q==}
     hasBin: true
 
   lightningcss-android-arm64@1.33.0:
@@ -2179,7 +2179,7 @@ snapshots:
 
   js-tokens@10.0.0: {}
 
-  js-yaml@5.2.1:
+  js-yaml@5.3.0:
     dependencies:
       argparse: 2.0.1
 
