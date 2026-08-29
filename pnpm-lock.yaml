@@ -52,7 +52,7 @@ importers:
         version: 10.2.6
       monocart-coverage-reports:
         specifier: ^2.12.11
-        version: 2.12.11
+        version: 2.13.0
     devDependencies:
       '@types/js-yaml':
         specifier: ^4.0.9
@@ -951,8 +951,8 @@ packages:
     resolution: {integrity: sha512-HEHNfbars9v4pgpW6SO1KSPkfoS0xVOM/9UzkJltjlsHZmJasxg8aXkuZa7SMf8vKGIBhpUsPluQSqhJFCqebw==}
     engines: {node: '>=0.4.0'}
 
-  acorn@8.16.0:
-    resolution: {integrity: sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==}
+  acorn@8.18.0:
+    resolution: {integrity: sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==}
     engines: {node: '>=0.4.0'}
     hasBin: true
 
@@ -1153,8 +1153,8 @@ packages:
     resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
     engines: {node: 18 || 20 || >=22}
 
-  monocart-coverage-reports@2.12.11:
-    resolution: {integrity: sha512-yo4/FdUdFIWoc9OjhBZCNXM95tYHS4e8nov9Q3AGbpvteT/W5aQSc4B+Q0nhmedZFvjvm3BUH/Xu9GT2n/0wkw==}
+  monocart-coverage-reports@2.13.0:
+    resolution: {integrity: sha512-RJfwzbn+EvR0OhCSU3bX2mKd0tSv4RLvood0weoCZV1L99+kBYH0Yq5SnnBFRik7nRoEoGB4mLuZAvO1Fr3DpQ==}
     hasBin: true
 
   monocart-locator@1.0.3:
@@ -2068,13 +2068,13 @@ snapshots:
 
   acorn-loose@8.5.2:
     dependencies:
-      acorn: 8.16.0
+      acorn: 8.18.0
 
   acorn-walk@8.3.5:
     dependencies:
-      acorn: 8.16.0
+      acorn: 8.18.0
 
-  acorn@8.16.0: {}
+  acorn@8.18.0: {}
 
   argparse@2.0.1: {}
 
@@ -2252,9 +2252,9 @@ snapshots:
     dependencies:
       brace-expansion: 5.0.9
 
-  monocart-coverage-reports@2.12.11:
+  monocart-coverage-reports@2.13.0:
     dependencies:
-      acorn: 8.16.0
+      acorn: 8.18.0
       acorn-loose: 8.5.2
       acorn-walk: 8.3.5
       commander: 14.0.3
