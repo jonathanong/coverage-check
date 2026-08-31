@@ -22,6 +22,48 @@ coverage-check check \
 
 Exits `0` on pass, `1` on failure, `2` on configuration error.
 
+### Historical Istanbul summary comparison
+
+Compare two Istanbul `coverage-summary.json` payloads across checkouts. The comparison removes
+test sources (`__tests__`, `test`, `tests`, and JavaScript/TypeScript `.test`, `.spec`, or
+`.stories` files), recalculates aggregate totals from the remaining source records, and fails if a
+baseline source disappears or any of its line, statement, function, or branch percentages decline.
+New head-only sources are allowed.
+
+The typed API accepts the parsed payloads and their checkout roots and returns normalized base/head
+totals plus deterministic regression records:
+
+```ts
+import { compareCoverageSummaries, type IstanbulCoverageSummary } from "coverage-check";
+
+const result = compareCoverageSummaries(
+  baseSummary as IstanbulCoverageSummary,
+  headSummary as IstanbulCoverageSummary,
+  baseRoot,
+  headRoot,
+);
+
+if (!result.passed) console.error(result.regressions);
+```
+
+Each regression is a typed `missing-file`, per-file `decrease`, or `aggregate-decrease` record.
+Decrease records include the metric and exact base/head covered, total, and percentage values.
+
+```sh
+coverage-check compare-summary \
+  --base-summary ./base/coverage-summary.json \
+  --head-summary ./head/coverage-summary.json \
+  --base-root ./base \
+  --head-root ./head \
+  --json ./coverage-summary-comparison.json
+```
+
+The roots establish the stable source identity for the two checkouts. Input records outside a root,
+duplicate normalized source names, invalid coverage counts, and malformed JSON are configuration
+errors. A zero-total metric is reported as `100%`. The command writes a deterministic human report
+to stdout and, when `--json` is set, the same structured result to the given path. It exits `0` on
+pass, `1` on regression, and `2` on invalid input.
+
 ### Patch-only CI contributions
 
 For fan-in workflows, producers can replace a full LCOV file with a lossless sparse projection
