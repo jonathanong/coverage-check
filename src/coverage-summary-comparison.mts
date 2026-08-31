@@ -1,4 +1,4 @@
-import { posix, win32 } from "node:path";
+import nativePath, { posix, win32 } from "node:path";
 
 import { coverageSummaryMetrics } from "./coverage-summary-comparison-types.mts";
 import type {
@@ -15,8 +15,6 @@ type FileSummary = Record<CoverageSummaryMetricName, CoverageSummaryCount>;
 type NormalizedSummary = Map<string, FileSummary>;
 type PathImplementation = typeof posix;
 type NormalizedRoot = { path: string; implementation: PathImplementation };
-
-const nativePath = process.platform === "win32" ? win32 : posix;
 
 function isWindowsAbsolute(value: string): boolean {
   return /^[a-z]:[\\/]/i.test(value) || value.startsWith("\\\\");
@@ -106,6 +104,7 @@ function normalizeSummary(
   const rootPath = normalizeRoot(root, label);
   const summary = asRecord(input, `${label} summary`);
   const normalized = new Map<string, FileSummary>();
+  const seen = new Set<string>();
   const rawTotal = summary["total"];
   if (rawTotal === undefined) throw new Error(`${label} summary total is missing`);
   const total = asRecord(rawTotal, `${label} summary total`);
@@ -114,9 +113,10 @@ function normalizeSummary(
   for (const source of Object.keys(summary).sort(compareCodePoints)) {
     if (source === "total") continue;
     const file = normalizeSource(source, rootPath, label);
-    if (excludedSource(file)) continue;
-    if (normalized.has(file))
+    if (seen.has(file))
       throw new Error(`${label} summary has duplicate normalized source: ${file}`);
+    seen.add(file);
+    if (excludedSource(file)) continue;
     const rawFile = asRecord(summary[source], `${label} summary source ${source}`);
     normalized.set(file, {
       lines: parseMetric(rawFile["lines"], `${label} summary source ${source}.lines`),

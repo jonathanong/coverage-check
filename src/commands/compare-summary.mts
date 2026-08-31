@@ -109,10 +109,12 @@ function parseJson(path: string, label: string): unknown {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch (error) {
-    throw new Error(
-      `failed to read ${label}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    throw new Error(`failed to read ${label}: ${errorMessage(error)}`);
   }
+}
+
+function errorMessage(error: unknown): string {
+  return String(error).replace(/^[A-Za-z]*Error: /, "");
 }
 
 export async function main(argv: string[]): Promise<number> {
@@ -135,9 +137,7 @@ export async function main(argv: string[]): Promise<number> {
     stdout(renderComparison(result));
     return result.passed ? 0 : 1;
   } catch (error) {
-    stderr(
-      `coverage-check compare-summary: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    stderr(`coverage-check compare-summary: ${errorMessage(error)}`);
     return 2;
   }
 }

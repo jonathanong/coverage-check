@@ -2,6 +2,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  compareCoverageSummaries as compareCoverageSummariesFromPackage,
+  coverageSummaryMetrics as coverageSummaryMetricsFromPackage,
+} from "./coverage-check.mts";
 import { compareCoverageSummaries } from "./coverage-summary-comparison.mts";
 import { main, renderComparison } from "./commands/compare-summary.mts";
 
@@ -33,6 +37,16 @@ function summary(
 }
 
 describe("compareCoverageSummaries", () => {
+  it("is exported with its metrics from the package root", () => {
+    expect(compareCoverageSummariesFromPackage).toBe(compareCoverageSummaries);
+    expect(coverageSummaryMetricsFromPackage).toEqual([
+      "lines",
+      "statements",
+      "functions",
+      "branches",
+    ]);
+  });
+
   it("compares retained production files and recomputes aggregate totals", () => {
     const base = summary({
       "/base/src/a.ts": {
@@ -260,6 +274,17 @@ describe("compareCoverageSummaries", () => {
         "/base",
       ),
     ).toThrow("duplicate normalized source");
+    expect(() =>
+      compareCoverageSummaries(
+        summary({
+          "/base/src/test/a.ts": {},
+          "/base/src/test/../test/a.ts": {},
+        }),
+        empty,
+        "/base",
+        "/base",
+      ),
+    ).toThrow("duplicate normalized source");
     expect(() => compareCoverageSummaries(empty, empty, "", "/base")).toThrow(
       "root must not be empty",
     );
@@ -279,6 +304,22 @@ describe("compareCoverageSummaries", () => {
         "/base",
       ),
     ).toThrow("outside root");
+    expect(() =>
+      compareCoverageSummaries(
+        summary({ "": { lines: { covered: 0, total: 0 } } }),
+        empty,
+        ".",
+        ".",
+      ),
+    ).toThrow("source must not be empty");
+  });
+
+  it("resolves relative checkout roots with native path semantics", () => {
+    const empty = summary({});
+    expect(compareCoverageSummaries(empty, empty, ".", ".")).toMatchObject({
+      passed: true,
+      regressions: [],
+    });
   });
 
   it("excludes every supported test-source naming convention", () => {
