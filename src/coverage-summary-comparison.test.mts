@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { compareCoverageSummaries } from "./coverage-summary-comparison.mts";
-import { main } from "./commands/compare-summary.mts";
+import { main, renderComparison } from "./commands/compare-summary.mts";
 
 type Metric = { covered: number; total: number };
 type Summary = Record<string, Record<string, Metric>>;
@@ -321,12 +321,16 @@ describe("compareCoverageSummaries", () => {
       branches: { covered: 0, total: 0 },
     };
     const base = summary({
+      "/base/src/a": zero,
+      "/base/src/a/b.ts": zero,
       "/base/src/𐀀.ts": zero,
       "/base/src/z.ts": zero,
       "/base/src/é.ts": zero,
     });
 
     expect(compareCoverageSummaries(base, summary({}), "/base", "/head").regressions).toEqual([
+      { kind: "missing-file", file: "src/a" },
+      { kind: "missing-file", file: "src/a/b.ts" },
       { kind: "missing-file", file: "src/z.ts" },
       { kind: "missing-file", file: "src/é.ts" },
       { kind: "missing-file", file: "src/𐀀.ts" },
@@ -335,6 +339,9 @@ describe("compareCoverageSummaries", () => {
 
   it("validates the Istanbul total record even though aggregates are recomputed", () => {
     const valid = summary({});
+    expect(() => compareCoverageSummaries(null as never, valid, "/base", "/head")).toThrow(
+      "base summary must be an object",
+    );
     expect(() => compareCoverageSummaries({}, valid, "/base", "/head")).toThrow(
       "base summary total is missing",
     );
@@ -346,6 +353,14 @@ describe("compareCoverageSummaries", () => {
         "/head",
       ),
     ).toThrow("base summary total.lines.covered must not exceed total");
+    expect(() =>
+      compareCoverageSummaries(
+        { total: { lines: { covered: Number.NaN, total: 0 } } },
+        valid,
+        "/base",
+        "/head",
+      ),
+    ).toThrow("must be a finite nonnegative number");
   });
 });
 
@@ -422,7 +437,37 @@ describe("compare-summary command", () => {
 
   it("returns 2 for missing required command input", async () => {
     await expect(main([])).resolves.toBe(2);
+    await expect(main(["--base-summary"])).resolves.toBe(2);
+    await expect(main(["--unknown", "value"])).resolves.toBe(2);
     await expect(main(["--base-summary", "a", "--base-summary", "b"])).resolves.toBe(2);
+    await expect(
+      main([
+        "--base-summary",
+        join(tmpDir, "missing.json"),
+        "--head-summary",
+        join(tmpDir, "also-missing.json"),
+        "--base-root",
+        join(tmpDir, "base"),
+        "--head-root",
+        join(tmpDir, "head"),
+      ]),
+    ).resolves.toBe(2);
+  });
+
+  it("renders a missing baseline file", () => {
+    const metric = {
+      lines: { covered: 0, total: 0 },
+      statements: { covered: 0, total: 0 },
+      functions: { covered: 0, total: 0 },
+      branches: { covered: 0, total: 0 },
+    };
+    const result = compareCoverageSummaries(
+      summary({ "/base/src/a.ts": metric }),
+      summary({}),
+      "/base",
+      "/head",
+    );
+    expect(renderComparison(result)).toContain("src/a.ts: missing from head summary");
   });
 
   it("returns 0 and writes the exact deterministic pass result", async () => {
