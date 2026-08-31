@@ -5,6 +5,7 @@ import { main as htmlMain } from "./commands/html.mts";
 import { main as mergeMain } from "./commands/merge.mts";
 import { main as summaryMain } from "./commands/summary.mts";
 import { main as prepareArtifactsMain } from "./commands/prepare-artifacts.mts";
+import { main as compareSummaryMain } from "./commands/compare-summary.mts";
 
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
@@ -23,6 +24,7 @@ export async function main(argv: string[]): Promise<number> {
   if (sub === "html") return htmlMain(argv.slice(1));
   if (sub === "summary") return summaryMain(argv.slice(1));
   if (sub === "prepare-artifacts") return prepareArtifactsMain(argv.slice(1));
+  if (sub === "compare-summary") return compareSummaryMain(argv.slice(1));
 
   stderr(`coverage-check: unknown subcommand: ${JSON.stringify(sub)}`);
   return 2;
@@ -41,6 +43,7 @@ Commands:
   merge       Merge lcov.info files
   html        Generate HTML coverage reports
   summary     Generate a coverage summary
+  compare-summary  Compare historical Istanbul coverage summaries
 
 ${checkHelp()}`;
 }

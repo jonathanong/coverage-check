@@ -63,6 +63,21 @@ describe("cli subcommand dispatch", () => {
     expect(await main(["unknown-command"])).toBe(2);
   });
 
+  it("dispatches compare-summary", async () => {
+    expect(await main(["compare-summary"])).toBe(2);
+  });
+
+  it("prints compare-summary help through the subcommand", async () => {
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      expect(await main(["compare-summary", "--help"])).toBe(0);
+      const output = writeSpy.mock.calls.map((call) => String(call[0])).join("");
+      expect(output).toContain("--base-summary <path>");
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
   it("flags-first argument (starting with --) goes to check", async () => {
     // '--rules' starts with '-', so dispatch goes to check
     expect(await main(["--rules", rulesPath, "--artifacts", artifactsDir])).toBe(0);
