@@ -45,7 +45,12 @@ function asRecord(value: unknown, label: string): JsonRecord {
 }
 
 function validCount(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    !Number.isInteger(value) ||
+    value < 0
+  ) {
     throw new Error(`${label} must be a finite nonnegative number`);
   }
   return value;
