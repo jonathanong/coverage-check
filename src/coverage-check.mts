@@ -56,7 +56,7 @@ export {
 } from "./patch-contribution-validation.mts";
 export { preparePatchCoverageArtifacts } from "./patch-artifacts.mts";
 export { compareCoverageSummaries } from "./coverage-summary-comparison.mts";
-export { coverageSummaryMetrics } from "./coverage-summary-comparison.mts";
+export { coverageSummaryMetrics } from "./coverage-summary-comparison-types.mts";
 
 export type { CheckArgs, CheckRunResult, EvaluatedCheck } from "./commands/check.mts";
 export type { StorePutArgs } from "./commands/store-put.mts";
@@ -114,7 +114,7 @@ export type {
   CoverageSummaryTotals,
   IstanbulCoverageSummary,
   IstanbulCoverageSummaryMetric,
-} from "./coverage-summary-comparison.mts";
+} from "./coverage-summary-comparison-types.mts";
 
 export type {
   CoverageCheckResult,

@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 
 import { coverageSummaryMetrics } from "./coverage-summary-comparison-types.mts";
 import type {
@@ -10,20 +10,17 @@ import type {
   IstanbulCoverageSummary,
 } from "./coverage-summary-comparison-types.mts";
 
-export { coverageSummaryMetrics } from "./coverage-summary-comparison-types.mts";
-export type {
-  CoverageSummaryComparison,
-  CoverageSummaryCount,
-  CoverageSummaryMetricName,
-  CoverageSummaryRegression,
-  CoverageSummaryTotals,
-  IstanbulCoverageSummary,
-  IstanbulCoverageSummaryMetric,
-} from "./coverage-summary-comparison-types.mts";
-
 type JsonRecord = Record<string, unknown>;
 type FileSummary = Record<CoverageSummaryMetricName, CoverageSummaryCount>;
 type NormalizedSummary = Map<string, FileSummary>;
+type PathImplementation = typeof posix;
+type NormalizedRoot = { path: string; implementation: PathImplementation };
+
+const nativePath = process.platform === "win32" ? win32 : posix;
+
+function isWindowsAbsolute(value: string): boolean {
+  return /^[a-z]:[\\/]/i.test(value) || value.startsWith("\\\\");
+}
 
 function compareCodePoints(left: string, right: string): number {
   const leftPoints = Array.from(left);
@@ -51,7 +48,7 @@ function validCount(value: unknown, label: string): number {
     !Number.isInteger(value) ||
     value < 0
   ) {
-    throw new Error(`${label} must be a finite nonnegative number`);
+    throw new Error(`${label} must be a finite nonnegative integer`);
   }
   return value;
 }
@@ -64,25 +61,34 @@ function parseMetric(value: unknown, label: string): CoverageSummaryCount {
   return { covered, total };
 }
 
-function normalizeRoot(root: string, label: string): string {
+function normalizeRoot(root: string, label: string): NormalizedRoot {
   if (!root.trim()) throw new Error(`${label} root must not be empty`);
-  return resolve(root);
+  const implementation = isWindowsAbsolute(root)
+    ? win32
+    : posix.isAbsolute(root)
+      ? posix
+      : nativePath;
+  return { path: implementation.resolve(root), implementation };
 }
 
-function normalizeSource(source: string, root: string, label: string): string {
+function normalizeSource(source: string, root: NormalizedRoot, label: string): string {
   if (!source.trim()) throw new Error(`${label} source must not be empty`);
-  const absolute = resolve(root, source);
-  const normalized = relative(root, absolute);
+  const { implementation } = root;
+  const foreignAbsolute =
+    (implementation === win32 && posix.isAbsolute(source)) ||
+    (implementation === posix && isWindowsAbsolute(source));
+  const absolute = implementation.resolve(root.path, source);
+  const normalized = implementation.relative(root.path, absolute);
   if (
+    foreignAbsolute ||
     normalized.length === 0 ||
     normalized === ".." ||
-    normalized.startsWith(`..${sep}`) ||
-    isAbsolute(normalized) ||
-    win32.isAbsolute(normalized)
+    normalized.startsWith(`..${implementation.sep}`) ||
+    implementation.isAbsolute(normalized)
   ) {
     throw new Error(`${label} source is outside root: ${source}`);
   }
-  return normalized.split(sep).join("/");
+  return normalized.split(implementation.sep).join("/");
 }
 
 function excludedSource(source: string): boolean {
@@ -147,10 +153,6 @@ function withPercentage(count: CoverageSummaryCount): CoverageSummaryCount & { p
   return { ...count, pct: percentage(count) };
 }
 
-/**
- * Compares two historical Istanbul coverage-summary payloads after removing test sources.
- * Aggregate totals are recomputed from retained file records instead of each payload's total.
- */
 export function compareCoverageSummaries(
   baseSummary: IstanbulCoverageSummary,
   headSummary: IstanbulCoverageSummary,
@@ -190,10 +192,5 @@ export function compareCoverageSummaries(
     }
   }
 
-  return {
-    passed: regressions.length === 0,
-    base,
-    head,
-    regressions,
-  };
+  return { passed: regressions.length === 0, base, head, regressions };
 }

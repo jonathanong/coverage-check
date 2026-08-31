@@ -360,7 +360,32 @@ describe("compareCoverageSummaries", () => {
         "/base",
         "/head",
       ),
-    ).toThrow("must be a finite nonnegative number");
+    ).toThrow("must be a finite nonnegative integer");
+    expect(() =>
+      compareCoverageSummaries(
+        { total: { lines: { covered: 0.5, total: 1 } } },
+        valid,
+        "/base",
+        "/head",
+      ),
+    ).toThrow("must be a finite nonnegative integer");
+  });
+
+  it("normalizes Windows checkout paths with Windows semantics on every host", () => {
+    const metric = {
+      lines: { covered: 1, total: 1 },
+      statements: { covered: 1, total: 1 },
+      functions: { covered: 1, total: 1 },
+      branches: { covered: 1, total: 1 },
+    };
+    expect(
+      compareCoverageSummaries(
+        summary({ "C:\\base\\src\\a.ts": metric }),
+        summary({ "D:\\head\\src\\a.ts": metric }),
+        "C:\\base",
+        "D:\\head",
+      ),
+    ).toMatchObject({ passed: true, regressions: [] });
   });
 });
 

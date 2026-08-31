@@ -1,8 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { compareCoverageSummaries } from "../coverage-summary-comparison.mts";
-import type { CoverageSummaryComparison } from "../coverage-summary-comparison.mts";
-import type { IstanbulCoverageSummary } from "../coverage-summary-comparison.mts";
+import type {
+  CoverageSummaryComparison,
+  IstanbulCoverageSummary,
+} from "../coverage-summary-comparison-types.mts";
 
 type CompareSummaryArgs = {
   baseSummary: string;
