@@ -28,6 +28,7 @@ describe("cli subcommand dispatch", () => {
       const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
       expect(output).toContain("Commands:");
       expect(output).toContain("check");
+      expect(output).toContain("prepare-artifacts");
       expect(output).toContain("--advisory");
     } finally {
       writeSpy.mockRestore();

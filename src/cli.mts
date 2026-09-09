@@ -43,7 +43,8 @@ Commands:
   merge       Merge lcov.info files
   html        Generate HTML coverage reports
   summary     Generate a coverage summary
-  compare-summary  Compare historical Istanbul coverage summaries
+  prepare-artifacts  Verify and label LCOV artifacts before a fan-in check
+  compare-summary    Compare historical Istanbul coverage summaries
 
 ${checkHelp()}`;
 }
