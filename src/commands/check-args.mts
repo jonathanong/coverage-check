@@ -8,6 +8,7 @@ export type CheckArgs = {
   rules: string;
   artifacts: string;
   base: string;
+  /** Head git ref for git diff, or "WORKTREE" to diff against the current working tree. */
   head: string;
   pr: number | null;
   repo: string;

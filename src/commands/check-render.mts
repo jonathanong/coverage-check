@@ -10,6 +10,7 @@ Options:
   --artifacts <dir>              Directory to scan for lcov.info files (default: ./coverage-artifacts)
   --base <ref>                   Base git ref for git diff (default: origin/main)
   --head <ref>                   Head git ref for git diff (default: HEAD)
+                                 Use WORKTREE to diff against the current working tree
   --store-fs <path>              Path to a filesystem suite store directory
   --store <path>                 Alias for --store-fs
   --store-s3 <bucket[/prefix]>   S3 suite store
@@ -27,5 +28,8 @@ Options:
   --drop-only-changed-areas      Restrict no_coverage_drop to changed rule areas
   --drop-only                    Evaluate and print only no_coverage_drop rules
   --require-artifact <relpath>   Fail if this path is absent under --artifacts (repeatable)
+  --fail-on-empty                Exit 1 when no coverage data is found instead of skipping
+  --aggregate-artifacts          Treat fresh LCOV files as one source for diagnostics
+  --ignore-path <glob>           Prepend a zero-threshold override glob for this run (repeatable)
   -h, --help                     Show this help`;
 }

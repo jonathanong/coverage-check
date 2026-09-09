@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseCheckArgs } from "./check-args.mts";
 import { checkCoverage, evaluateCheck, main, runCheck } from "./check.mts";
 import { FileSystemSuiteStore } from "../suite-store.mts";
+import { WORKTREE_HEAD } from "../diff-parser.mts";
 
 describe("main argument validation", () => {
   it("returns 0 and prints help for --help", async () => {
@@ -1354,6 +1355,57 @@ describe("with a real git repo and a known diff", () => {
       suite: null,
     });
     expect(check.result?.missingCoverage?.[0]?.lines).toEqual([2]);
+  });
+
+  it("analyzes scoped source from the worktree when head is WORKTREE", async () => {
+    writeFileSync(
+      rulesPath,
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['backend/**']\nrules:\n  - paths: backend/**\n    patch_coverage_min: 90\n",
+    );
+    // Uncommitted edit on top of headSha — only reachable by reading the worktree,
+    // not `git show WORKTREE:file` (WORKTREE is not a real git ref).
+    writeFileSync(join(repoDir, "backend/foo.mts"), "const a = 1\nconst b = 2\nconst c = 3\n");
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: WORKTREE_HEAD,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(check.exitCode).not.toBe(2);
+    expect(check.error).toBeNull();
+    expect(check.result?.missingCoverage?.[0]?.lines).toEqual([2, 3]);
+  });
+
+  it("analyzes scoped source from the worktree when invoked from a nested subdirectory", async () => {
+    writeFileSync(
+      rulesPath,
+      "scope:\n  version: 1\n  analyzer: javascript\n  include: ['backend/**']\nrules:\n  - paths: backend/**\n    patch_coverage_min: 90\n",
+    );
+    writeFileSync(join(repoDir, "backend/foo.mts"), "const a = 1\nconst b = 2\nconst c = 3\n");
+    // Diff/lcov file keys are repo-root-relative; reading them off disk must resolve
+    // against the repo root, not process.cwd(), when the two differ.
+    process.chdir(join(repoDir, "backend"));
+    const check = await checkCoverage({
+      rules: rulesPath,
+      artifacts: artifactsDir,
+      base: baseSha,
+      head: WORKTREE_HEAD,
+      pr: null,
+      repo: "",
+      json: null,
+      stripPrefixes: [],
+      store: null,
+      suite: null,
+    });
+    expect(check.exitCode).not.toBe(2);
+    expect(check.error).toBeNull();
+    expect(check.result?.missingCoverage?.[0]?.lines).toEqual([2, 3]);
   });
 
   it("returns 1 when new lines are uncovered and below threshold", async () => {

@@ -1,10 +1,11 @@
 // oxlint-disable max-lines -- check evaluation and CLI rendering share one pipeline
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { relative } from "node:path";
+import { join, relative } from "node:path";
 import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov } from "../lcov-merge.mts";
-import { getChangedLines } from "../diff-parser.mts";
+import { getChangedLines, WORKTREE_HEAD } from "../diff-parser.mts";
+import { resolveRepoRoot } from "../untracked-diff.mts";
 import { getChangedLineContent } from "../diff-parser-content.mts";
 import { loadCoverageConfig, buildChangedRules, withIgnoredPaths } from "../rules.mts";
 import { computePatchCoverage } from "../patch-coverage.mts";
@@ -364,9 +365,15 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
 
   let patchCoverage;
   try {
+    // file keys in `diff` are repo-root-relative (see parseDiff), so reading them off
+    // disk needs the repo root, not process.cwd() — the two differ when invoked from
+    // a subdirectory. `git show <ref>:<path>` doesn't have this problem: it already
+    // resolves <path> against the repo root regardless of cwd.
+    const repoRoot = args.head === WORKTREE_HEAD ? await resolveRepoRoot() : null;
     patchCoverage = args.dropOnly
       ? { buckets: [], informational: [], missingCoverage: [] }
       : computePatchCoverage(diff, lcov, rules, scope, (file) => {
+          if (repoRoot !== null) return readFileSync(join(repoRoot, file), "utf8");
           // Git is intentionally PATH-resolved for cross-platform support; execFileSync does not use a shell.
           return execFileSync("git", ["show", `${args.head}:${file}`], { encoding: "utf8" }); // NOSONAR
         });
