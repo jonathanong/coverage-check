@@ -610,12 +610,16 @@ describe("runGitDiff with WORKTREE_HEAD", () => {
 
       mkdirSync(join(repoDir, "sub"), { recursive: true });
       writeFileSync(join(repoDir, "sub", "new.mts"), "hello\n");
+      writeFileSync(join(repoDir, "root-new.mts"), "hi\n");
 
       // cwd is a subdirectory, not the repo root — untracked file discovery must
-      // still resolve `sub/new.mts` against the repo root, not against this cwd.
+      // still resolve `sub/new.mts` against the repo root, not against this cwd,
+      // and must still find root-new.mts even though it sits outside this cwd.
       const diff = await runGitDiff(baseSha, WORKTREE_HEAD, join(repoDir, "sub"));
+      const parsed = parseDiff(diff);
 
-      expect(parseDiff(diff).get("sub/new.mts")).toEqual(new Set([1]));
+      expect(parsed.get("sub/new.mts")).toEqual(new Set([1]));
+      expect(parsed.get("root-new.mts")).toEqual(new Set([1]));
     } finally {
       rmSync(repoDir, { recursive: true, force: true });
     }

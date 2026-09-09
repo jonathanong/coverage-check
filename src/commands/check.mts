@@ -369,12 +369,11 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     // disk needs the repo root, not process.cwd() — the two differ when invoked from
     // a subdirectory. `git show <ref>:<path>` doesn't have this problem: it already
     // resolves <path> against the repo root regardless of cwd.
-    const repoRoot =
-      args.head === WORKTREE_HEAD && scope !== undefined ? await resolveRepoRoot() : null;
+    const repoRoot = args.head === WORKTREE_HEAD ? await resolveRepoRoot() : null;
     patchCoverage = args.dropOnly
       ? { buckets: [], informational: [], missingCoverage: [] }
       : computePatchCoverage(diff, lcov, rules, scope, (file) => {
-          if (args.head === WORKTREE_HEAD) return readFileSync(join(repoRoot!, file), "utf8");
+          if (repoRoot !== null) return readFileSync(join(repoRoot, file), "utf8");
           // Git is intentionally PATH-resolved for cross-platform support; execFileSync does not use a shell.
           return execFileSync("git", ["show", `${args.head}:${file}`], { encoding: "utf8" }); // NOSONAR
         });

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -25,12 +25,35 @@ function makeRepo(): { repoDir: string; git: (args: string[]) => string } {
 }
 
 describe("buildUntrackedDiff", () => {
-  it("rejects when git ls-files fails", async () => {
+  it("rejects when git rev-parse fails outside a repo", async () => {
     const dir = mkdtempSync(join(tmpdir(), "coverage-check-not-a-repo-"));
     try {
-      await expect(buildUntrackedDiff(dir)).rejects.toThrow("git ls-files exited with code");
+      await expect(buildUntrackedDiff(dir)).rejects.toThrow("git rev-parse exited with code");
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("finds untracked files outside the invocation cwd via the repo root", async () => {
+    const { repoDir, git } = makeRepo();
+    try {
+      writeFileSync(join(repoDir, "base.mts"), "a\n");
+      git(["add", "."]);
+      git(["commit", "-q", "-m", "base"]);
+
+      mkdirSync(join(repoDir, "sub"));
+      writeFileSync(join(repoDir, "sub", "inside.mts"), "b\n");
+      writeFileSync(join(repoDir, "root-level.mts"), "c\n");
+
+      // ls-files only traverses from its own cwd — invoking it with cwd=sub must
+      // still surface root-level.mts, which lives outside that cwd.
+      const diff = await buildUntrackedDiff(join(repoDir, "sub"));
+      const parsed = parseDiff(diff);
+
+      expect(parsed.get("sub/inside.mts")).toEqual(new Set([1]));
+      expect(parsed.get("root-level.mts")).toEqual(new Set([1]));
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
     }
   });
 

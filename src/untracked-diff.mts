@@ -25,13 +25,16 @@ export async function resolveRepoRoot(cwd?: string): Promise<string> {
 
 /**
  * Lists untracked, non-ignored files as repo-root-relative paths, regardless of cwd.
+ * `ls-files` only traverses from its own cwd — `--full-name` merely formats the paths
+ * it finds, it doesn't widen the search — so this must run with cwd set to the repo
+ * root, or untracked files outside the invocation cwd go undiscovered entirely.
  * Uses -z (NUL-delimited, unquoted) so unusual filenames (non-ASCII, control bytes)
  * come back as their exact bytes instead of git's C-quoted `"..."` form.
  */
-async function listUntrackedFiles(cwd: string | undefined): Promise<string[]> {
+async function listUntrackedFiles(repoRoot: string): Promise<string[]> {
   const out = await runGit(
     ["ls-files", "--others", "--exclude-standard", "--full-name", "-z"],
-    cwd,
+    repoRoot,
   );
   return out
     .toString("utf8")
@@ -62,11 +65,11 @@ function untrackedFileDiff(path: string, repoRoot: string): string {
   return `diff --git a/${path} b/${path}\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n${body}\n`;
 }
 
-/** Builds synthetic "every line added" diff text for all untracked files under cwd. */
+/** Builds synthetic "every line added" diff text for all untracked files in the repo. */
 export async function buildUntrackedDiff(cwd?: string): Promise<string> {
-  const paths = await listUntrackedFiles(cwd);
-  if (paths.length === 0) return "";
   const repoRoot = await resolveRepoRoot(cwd);
+  const paths = await listUntrackedFiles(repoRoot);
+  if (paths.length === 0) return "";
   return paths
     .map((path) => untrackedFileDiff(path, repoRoot))
     .filter((block) => block.length > 0)
