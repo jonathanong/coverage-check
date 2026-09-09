@@ -600,6 +600,27 @@ describe("runGitDiff with WORKTREE_HEAD", () => {
     }
   });
 
+  it("discovers untracked files by their repo-root-relative path from a nested cwd", async () => {
+    const { repoDir, git } = makeRepo();
+    try {
+      writeFileSync(join(repoDir, "base.mts"), "a\n");
+      git(["add", "."]);
+      git(["commit", "-q", "-m", "base"]);
+      const baseSha = git(["rev-parse", "HEAD"]).trim();
+
+      mkdirSync(join(repoDir, "sub"), { recursive: true });
+      writeFileSync(join(repoDir, "sub", "new.mts"), "hello\n");
+
+      // cwd is a subdirectory, not the repo root — untracked file discovery must
+      // still resolve `sub/new.mts` against the repo root, not against this cwd.
+      const diff = await runGitDiff(baseSha, WORKTREE_HEAD, join(repoDir, "sub"));
+
+      expect(parseDiff(diff).get("sub/new.mts")).toEqual(new Set([1]));
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
   it("excludes gitignored untracked files from the diff", async () => {
     const { repoDir, git } = makeRepo();
     try {
