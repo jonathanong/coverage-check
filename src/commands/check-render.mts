@@ -10,7 +10,7 @@ Options:
   --artifacts <dir>              Directory to scan for lcov.info files (default: ./coverage-artifacts)
   --base <ref>                   Base git ref for git diff (default: origin/main)
   --head <ref>                   Head git ref for git diff (default: HEAD)
-                                  Use WORKTREE to diff against the current working tree
+                                 Use WORKTREE to diff against the current working tree
   --store-fs <path>              Path to a filesystem suite store directory
   --store <path>                 Alias for --store-fs
   --store-s3 <bucket[/prefix]>   S3 suite store
