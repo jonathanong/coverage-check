@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { decodeGitCString, parseDiff, runGitDiff } from "./diff-parser.mts";
+import { decodeGitCString, parseDiff, runGitDiff, WORKTREE_HEAD } from "./diff-parser.mts";
 import { parseDiffWithContent } from "./diff-parser-content.mts";
 
 const SIMPLE_DIFF = `
@@ -490,6 +490,154 @@ describe("runGitDiff", () => {
       expect(diff).toContain("rename from src/file-1.mts");
       expect(diff).not.toContain("@@");
       expect(parseDiff(diff).size).toBe(0);
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("runGitDiff with WORKTREE_HEAD", () => {
+  function makeRepo(): { repoDir: string; git: (args: string[]) => string } {
+    const repoDir = mkdtempSync(join(tmpdir(), "coverage-check-worktree-"));
+    const git = (args: string[]) =>
+      execFileSync("git", args, {
+        cwd: repoDir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "T",
+          GIT_AUTHOR_EMAIL: "t@t.com",
+          GIT_COMMITTER_NAME: "T",
+          GIT_COMMITTER_EMAIL: "t@t.com",
+        },
+      });
+    git(["init", "-q"]);
+    return { repoDir, git };
+  }
+
+  it("sees both staged and unstaged tracked-file changes", async () => {
+    const { repoDir, git } = makeRepo();
+    try {
+      writeFileSync(join(repoDir, "staged.mts"), "a\n");
+      writeFileSync(join(repoDir, "unstaged.mts"), "a\n");
+      git(["add", "."]);
+      git(["commit", "-q", "-m", "base"]);
+      const baseSha = git(["rev-parse", "HEAD"]).trim();
+
+      writeFileSync(join(repoDir, "staged.mts"), "a\nb\n");
+      git(["add", "staged.mts"]);
+      writeFileSync(join(repoDir, "unstaged.mts"), "a\nc\n");
+
+      const diff = await runGitDiff(baseSha, WORKTREE_HEAD, repoDir);
+      const parsed = parseDiff(diff);
+
+      expect(parsed.get("staged.mts")).toEqual(new Set([2]));
+      expect(parsed.get("unstaged.mts")).toEqual(new Set([2]));
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("sees a brand-new untracked file with every line marked as added", async () => {
+    const { repoDir, git } = makeRepo();
+    try {
+      writeFileSync(join(repoDir, "base.mts"), "a\n");
+      git(["add", "."]);
+      git(["commit", "-q", "-m", "base"]);
+      const baseSha = git(["rev-parse", "HEAD"]).trim();
+
+      writeFileSync(join(repoDir, "new-file.mts"), "one\ntwo\nthree\n");
+
+      const diff = await runGitDiff(baseSha, WORKTREE_HEAD, repoDir);
+
+      expect(parseDiff(diff).get("new-file.mts")).toEqual(new Set([1, 2, 3]));
+      const content = parseDiffWithContent(diff).get("new-file.mts");
+      expect(content?.get(1)).toBe("one");
+      expect(content?.get(2)).toBe("two");
+      expect(content?.get(3)).toBe("three");
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("handles untracked files with no trailing newline and skips empty untracked files", async () => {
+    const { repoDir, git } = makeRepo();
+    try {
+      writeFileSync(join(repoDir, "base.mts"), "a\n");
+      git(["add", "."]);
+      git(["commit", "-q", "-m", "base"]);
+      const baseSha = git(["rev-parse", "HEAD"]).trim();
+
+      writeFileSync(join(repoDir, "no-newline.mts"), "one\ntwo");
+      writeFileSync(join(repoDir, "empty.mts"), "");
+
+      const diff = await runGitDiff(baseSha, WORKTREE_HEAD, repoDir);
+      const parsed = parseDiff(diff);
+
+      expect(parsed.get("no-newline.mts")).toEqual(new Set([1, 2]));
+      expect(parsed.has("empty.mts")).toBe(false);
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("recurses into brand-new untracked directories", async () => {
+    const { repoDir, git } = makeRepo();
+    try {
+      writeFileSync(join(repoDir, "base.mts"), "a\n");
+      git(["add", "."]);
+      git(["commit", "-q", "-m", "base"]);
+      const baseSha = git(["rev-parse", "HEAD"]).trim();
+
+      mkdirSync(join(repoDir, "src", "nested"), { recursive: true });
+      writeFileSync(join(repoDir, "src", "nested", "new.mts"), "hello\n");
+
+      const diff = await runGitDiff(baseSha, WORKTREE_HEAD, repoDir);
+
+      expect(parseDiff(diff).get("src/nested/new.mts")).toEqual(new Set([1]));
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("excludes gitignored untracked files from the diff", async () => {
+    const { repoDir, git } = makeRepo();
+    try {
+      writeFileSync(join(repoDir, "base.mts"), "a\n");
+      writeFileSync(join(repoDir, ".gitignore"), "ignored.mts\n");
+      git(["add", "."]);
+      git(["commit", "-q", "-m", "base"]);
+      const baseSha = git(["rev-parse", "HEAD"]).trim();
+
+      writeFileSync(join(repoDir, "ignored.mts"), "should not appear\n");
+
+      const diff = await runGitDiff(baseSha, WORKTREE_HEAD, repoDir);
+
+      expect(parseDiff(diff).has("ignored.mts")).toBe(false);
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves the git index and working tree unmodified", async () => {
+    const { repoDir, git } = makeRepo();
+    try {
+      writeFileSync(join(repoDir, "staged.mts"), "a\n");
+      writeFileSync(join(repoDir, "unstaged.mts"), "a\n");
+      git(["add", "."]);
+      git(["commit", "-q", "-m", "base"]);
+      const baseSha = git(["rev-parse", "HEAD"]).trim();
+
+      writeFileSync(join(repoDir, "staged.mts"), "a\nb\n");
+      git(["add", "staged.mts"]);
+      writeFileSync(join(repoDir, "unstaged.mts"), "a\nc\n");
+      writeFileSync(join(repoDir, "untracked.mts"), "d\n");
+
+      const before = git(["status", "--porcelain"]);
+      await runGitDiff(baseSha, WORKTREE_HEAD, repoDir);
+      const after = git(["status", "--porcelain"]);
+
+      expect(after).toBe(before);
     } finally {
       rmSync(repoDir, { recursive: true, force: true });
     }

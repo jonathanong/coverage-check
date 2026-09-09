@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { relative } from "node:path";
 import { parseLcov } from "../lcov-parser.mts";
 import { mergeLcov } from "../lcov-merge.mts";
-import { getChangedLines } from "../diff-parser.mts";
+import { getChangedLines, WORKTREE_HEAD } from "../diff-parser.mts";
 import { getChangedLineContent } from "../diff-parser-content.mts";
 import { loadCoverageConfig, buildChangedRules, withIgnoredPaths } from "../rules.mts";
 import { computePatchCoverage } from "../patch-coverage.mts";
@@ -367,6 +367,7 @@ export async function evaluateCheck(args: CheckArgs): Promise<EvaluatedCheck> {
     patchCoverage = args.dropOnly
       ? { buckets: [], informational: [], missingCoverage: [] }
       : computePatchCoverage(diff, lcov, rules, scope, (file) => {
+          if (args.head === WORKTREE_HEAD) return readFileSync(file, "utf8");
           // Git is intentionally PATH-resolved for cross-platform support; execFileSync does not use a shell.
           return execFileSync("git", ["show", `${args.head}:${file}`], { encoding: "utf8" }); // NOSONAR
         });

@@ -1,4 +1,8 @@
+import { buildUntrackedDiff } from "./untracked-diff.mts";
 import type { DiffLines } from "./types.mts";
+
+/** Special `--head` value meaning "diff against the current working tree (staged, unstaged, and untracked changes)". */
+export const WORKTREE_HEAD = "WORKTREE";
 
 /**
  * Decodes a git C-string (inner content between surrounding double-quotes).
@@ -129,10 +133,15 @@ export async function runGitDiff(baseRef: string, headRef: string, cwd?: string)
       );
     });
 
-  const mergeBase = await spawnProcess("git", ["merge-base", baseRef, headRef]);
+  const isWorktree = headRef === WORKTREE_HEAD;
+  const mergeBase = await spawnProcess("git", [
+    "merge-base",
+    baseRef,
+    isWorktree ? "HEAD" : headRef,
+  ]);
   const base = mergeBase.trim();
   // --src-prefix/--dst-prefix override diff.noprefix and diff.mnemonicPrefix git config
-  return spawnProcess("git", [
+  const diffArgs = [
     "diff",
     "-M",
     "-l0",
@@ -142,8 +151,14 @@ export async function runGitDiff(baseRef: string, headRef: string, cwd?: string)
     "--src-prefix=a/",
     "--dst-prefix=b/",
     base,
-    headRef,
-  ]);
+  ];
+  // A trailing head ref diffs base..headRef; omitting it diffs base against the
+  // working tree (staged + unstaged tracked changes), which is what WORKTREE wants.
+  if (!isWorktree) diffArgs.push(headRef);
+  const trackedDiff = await spawnProcess("git", diffArgs);
+  if (!isWorktree) return trackedDiff;
+
+  return trackedDiff + (await buildUntrackedDiff(cwd));
 }
 
 /** Runs git diff and returns the parsed result. */
