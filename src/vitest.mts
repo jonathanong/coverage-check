@@ -30,7 +30,9 @@ export function formatSupplementalLcov(files: SupplementalLineCoverage[]): strin
 }
 
 export class ScopedV8CoverageProvider extends V8CoverageProvider {
-  override async generateCoverage(context: { allTestsRun: boolean }) {
+  override async generateCoverage(context: {
+    allTestsRun: boolean;
+  }): ReturnType<V8CoverageProvider["generateCoverage"]> {
     const coverageMap = await super.generateCoverage(context);
     const outputPath = process.env["COVERAGE_CHECK_SUPPLEMENTAL_LCOV"];
     if (!outputPath)
