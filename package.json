@@ -38,7 +38,12 @@
     "@aws-sdk/client-s3": "3.1149.0",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@smithy/node-http-handler": "^4.7.7",
+    "acorn": "^8.19.0",
+    "ast-v8-to-istanbul": "1.0.7",
     "esbuild": "^0.28.2",
+    "istanbul-lib-coverage": "3.2.2",
+    "istanbul-lib-report": "3.0.1",
+    "istanbul-reports": "3.2.0",
     "js-yaml": "^5.2.1",
     "minimatch": "^10.1.1",
     "monocart-coverage-reports": "^2.12.11"
@@ -56,6 +61,9 @@
     }
   },
   "devDependencies": {
+    "@types/istanbul-lib-coverage": "2.0.6",
+    "@types/istanbul-lib-report": "3.0.3",
+    "@types/istanbul-reports": "3.0.4",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.0.1",
     "@vitest/coverage-v8": "^5.0.2",
