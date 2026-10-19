@@ -68,3 +68,27 @@ export function assertNativeV8Inputs(dir: string): void {
   }
   if (coverageFiles === 0) throw new Error(`no Node V8 coverage files found under ${dir}`);
 }
+
+export function requireTypeStripper(
+  value: unknown,
+): (source: string, options: { mode: "strip" }) => string {
+  if (typeof value !== "function") {
+    throw new Error("native TypeScript coverage requires Node with stripTypeScriptTypes support");
+  }
+  return value as (source: string, options: { mode: "strip" }) => string;
+}
+
+export function assertPreservedOffsets(source: string, stripped: string, path: string): void {
+  if (source.length !== stripped.length) {
+    throw new Error(`TypeScript stripping changed source offsets for ${path}`);
+  }
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] === "\n" || source[i] === "\r") {
+      if (source[i] !== stripped[i]) {
+        throw new Error(`TypeScript stripping changed source offsets for ${path}`);
+      }
+    } else if (stripped[i] === "\n" || stripped[i] === "\r") {
+      throw new Error(`TypeScript stripping changed source offsets for ${path}`);
+    }
+  }
+}

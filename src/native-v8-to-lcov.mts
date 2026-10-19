@@ -13,7 +13,11 @@ import { fileURLToPath } from "node:url";
 import { parse } from "acorn";
 import { minimatch } from "minimatch";
 import MCR from "monocart-coverage-reports";
-import { assertNativeV8Inputs } from "./native-v8-input.mts";
+import {
+  assertNativeV8Inputs,
+  assertPreservedOffsets,
+  requireTypeStripper,
+} from "./native-v8-input.mts";
 
 export type NativeV8ToLcovOptions = {
   v8Dir: string;
@@ -30,13 +34,7 @@ export type NativeV8ToLcovResult = {
 
 function sourcePath(url: string, root: string): string | null {
   if (!url.startsWith("file://")) return null;
-  let file: string;
-  try {
-    file = fileURLToPath(url);
-  } catch {
-    return null;
-  }
-  const path = relative(root, file).split(sep).join("/");
+  const path = relative(root, fileURLToPath(url)).split(sep).join("/");
   if (path === "" || path === ".." || path.startsWith("../") || isAbsolute(path)) return null;
   return path;
 }
@@ -49,18 +47,6 @@ function assertPhysicalSource(url: string, root: string): string {
     throw new Error(`V8 source resolves outside source root: ${url}`);
   }
   return readFileSync(physical, "utf8");
-}
-
-function preservesOffsets(source: string, stripped: string): boolean {
-  if (source.length !== stripped.length) return false;
-  for (let i = 0; i < source.length; i++) {
-    if (source[i] === "\n" || source[i] === "\r") {
-      if (source[i] !== stripped[i]) return false;
-    } else if (stripped[i] === "\n" || stripped[i] === "\r") {
-      return false;
-    }
-  }
-  return true;
 }
 
 function assertStrictlyParsable(source: string, path: string): void {
@@ -92,10 +78,9 @@ export async function convertNativeV8ToLcov(
     throw new Error("at least one non-empty include pattern is required");
   }
   assertNativeV8Inputs(v8Dir);
-  const stripTypeScriptTypes = (await import("node:module")).stripTypeScriptTypes;
-  if (typeof stripTypeScriptTypes !== "function") {
-    throw new Error("native TypeScript coverage requires Node with stripTypeScriptTypes support");
-  }
+  const stripTypeScriptTypes = requireTypeStripper(
+    (await import("node:module")).stripTypeScriptTypes,
+  );
 
   const included = (path: string): boolean =>
     options.include.some((pattern) => minimatch(path, pattern, { dot: true })) &&
@@ -125,19 +110,13 @@ export async function convertNativeV8ToLcov(
           throw new Error(`V8 source differs from the checkout: ${path}`);
         }
         const hash = createHash("sha256").update(entry.source).digest("hex");
-        const previous = sourceHashes.get(path);
-        if (previous !== undefined && previous !== hash) {
-          throw new Error(`conflicting V8 source text for ${path}`);
-        }
         sourceHashes.set(path, hash);
         if (/\.(?:ts|mts|cts)$/.test(path)) {
           if (entry.sourceMap !== undefined && entry.sourceMap !== null) {
             throw new Error(`raw TypeScript source map is unsupported for ${path}`);
           }
           const stripped = stripTypeScriptTypes(entry.source, { mode: "strip" });
-          if (!preservesOffsets(entry.source, stripped)) {
-            throw new Error(`TypeScript stripping changed source offsets for ${path}`);
-          }
+          assertPreservedOffsets(entry.source, stripped, path);
           entry.source = stripped;
         }
         assertStrictlyParsable(entry.source, path);

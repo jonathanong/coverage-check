@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseLcovFull } from "./lcov-records.mts";
 import { convertNativeV8ToLcov } from "./native-v8-to-lcov.mts";
-import { parseNativeV8ToLcovArgs } from "./commands/native-v8-to-lcov.mts";
+import { main, parseNativeV8ToLcovArgs } from "./commands/native-v8-to-lcov.mts";
 
 const directories: string[] = [];
 
@@ -248,8 +248,65 @@ describe("native V8 to LCOV", () => {
     expect(existsSync(output)).toBe(false);
   });
 
+  it("requires a nonempty direct API scope and honors exclusions", async () => {
+    const { root, v8Dir } = captureFixture();
+    const output = join(root, "report.lcov.info");
+    await expect(
+      convertNativeV8ToLcov({ v8Dir, sourceRoot: root, include: [], output }),
+    ).rejects.toThrow("include pattern");
+    await expect(
+      convertNativeV8ToLcov({
+        v8Dir,
+        sourceRoot: root,
+        include: ["fixture.mts"],
+        exclude: ["fixture.mts"],
+        output,
+      }),
+    ).rejects.toThrow("no included sources");
+    expect(existsSync(output)).toBe(false);
+  });
+
   it("requires an explicit source scope and output in the CLI", () => {
     expect(() => parseNativeV8ToLcovArgs(["--v8-dir", "raw"])).toThrow("required");
     expect(() => parseNativeV8ToLcovArgs(["--unknown", "value"])).toThrow("unknown flag");
+    expect(
+      parseNativeV8ToLcovArgs([
+        "--v8-dir",
+        "raw",
+        "--source-root",
+        "root",
+        "--include",
+        "src/**",
+        "--exclude",
+        "**/*.test.mts",
+        "--output",
+        "report.lcov",
+      ]),
+    ).toEqual({
+      v8Dir: "raw",
+      sourceRoot: "root",
+      include: ["src/**"],
+      exclude: ["**/*.test.mts"],
+      output: "report.lcov",
+    });
+  });
+
+  it("runs the CLI on an owned capture and returns an error for invalid input", async () => {
+    const { root, v8Dir } = captureFixture();
+    const output = join(root, "cli.lcov.info");
+    expect(
+      await main([
+        "--v8-dir",
+        v8Dir,
+        "--source-root",
+        root,
+        "--include",
+        "fixture.mts",
+        "--output",
+        output,
+      ]),
+    ).toBe(0);
+    expect(readFileSync(output, "utf8")).toContain("SF:fixture.mts");
+    expect(await main(["--unknown", "value"])).toBe(2);
   });
 });
