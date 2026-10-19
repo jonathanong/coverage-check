@@ -38,6 +38,7 @@
     "@aws-sdk/client-s3": "3.1149.0",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@smithy/node-http-handler": "^4.7.7",
+    "acorn": "^8.19.0",
     "esbuild": "^0.28.2",
     "js-yaml": "^5.2.1",
     "minimatch": "^10.1.1",

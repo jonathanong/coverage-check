@@ -1,6 +1,8 @@
 export { checkCoverage, evaluateCheck, runCheck } from "./commands/check.mts";
 export { runStorePut } from "./commands/store-put.mts";
 export { runMerge } from "./commands/merge.mts";
+export { convertNativeV8ToLcov } from "./native-v8-to-lcov.mts";
+export type { NativeV8ToLcovOptions, NativeV8ToLcovResult } from "./native-v8-to-lcov.mts";
 export {
   missingCoverageArtifacts,
   normalizeCoverageArtifacts,

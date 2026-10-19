@@ -334,6 +334,37 @@ coverage-check merge \
 
 Hit counts are **summed** across inputs (consistent with the package's internal multi-suite merge). Parent directories of `--output` are created automatically.
 
+### Native Node TypeScript coverage
+
+`native-v8-to-lcov` converts an executed `NODE_V8_COVERAGE` directory to LCOV with Monocart's
+V8 reporter. It uses Node's type stripping for raw `.ts`, `.mts`, and `.cts` entries so type-only
+syntax and multiline call continuations do not become invented zero-hit lines. It preserves
+genuine uncovered executable lines and branches. This command requires a Node version with
+`node:module.stripTypeScriptTypes` support and erasable TypeScript syntax; unsupported syntax or
+source maps fail the conversion. The input directory must contain only raw `coverage-*.json`
+captures; malformed or empty captures and separate source-cache JSON files fail closed.
+
+```sh
+NODE_DISABLE_COMPILE_CACHE=1 NODE_V8_COVERAGE="$PWD/native-v8" node ./script.mts
+coverage-check native-v8-to-lcov \
+  --v8-dir ./native-v8 \
+  --source-root "$PWD" \
+  --include 'src/**' \
+  --exclude '**/*.test.mts' \
+  --output ./coverage-native/lcov.info
+```
+
+Repeat `--include` or `--exclude` for more source globs. The converter strictly parses stripped
+source before reporting, so a reporter's loose-parser fallback cannot silently fabricate LCOV.
+It only reports scripts actually present in
+the V8 capture: it does not add empty reports for unloaded files. It fails if no included source
+is reported, or if the reporter omits one. The typed `convertNativeV8ToLcov()` API also returns
+SHA-256 hashes of the source text used for each output file. Each included script must resolve
+inside the source root and match the current file there. Capture and conversion must use the
+same frozen source checkout; raw V8 coverage does not itself bind a source-file hash. The output
+is written only after conversion and scope validation succeed. Existing `merge` and `check`
+commands can consume the resulting LCOV without changing their patch or missing-file rules.
+
 ### Advisory (non-blocking) mode
 
 Pass `--advisory` to exit `0` even when coverage falls short. The check still runs in full — JSON is written, the PR comment is posted, and uncovered lines are printed — but the process never exits `1`. Useful for pre-push hooks where you want feedback without blocking the push:

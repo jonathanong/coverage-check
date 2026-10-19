@@ -6,6 +6,7 @@ import { main as mergeMain } from "./commands/merge.mts";
 import { main as summaryMain } from "./commands/summary.mts";
 import { main as prepareArtifactsMain } from "./commands/prepare-artifacts.mts";
 import { main as compareSummaryMain } from "./commands/compare-summary.mts";
+import { main as nativeV8ToLcovMain } from "./commands/native-v8-to-lcov.mts";
 
 const stderr = (msg: string) => process.stderr.write(`${msg}\n`);
 const stdout = (msg: string) => process.stdout.write(`${msg}\n`);
@@ -25,6 +26,7 @@ export async function main(argv: string[]): Promise<number> {
   if (sub === "summary") return summaryMain(argv.slice(1));
   if (sub === "prepare-artifacts") return prepareArtifactsMain(argv.slice(1));
   if (sub === "compare-summary") return compareSummaryMain(argv.slice(1));
+  if (sub === "native-v8-to-lcov") return nativeV8ToLcovMain(argv.slice(1));
 
   stderr(`coverage-check: unknown subcommand: ${JSON.stringify(sub)}`);
   return 2;
@@ -45,6 +47,7 @@ Commands:
   summary     Generate a coverage summary
   prepare-artifacts  Verify and label LCOV artifacts before a fan-in check
   compare-summary    Compare historical Istanbul coverage summaries
+  native-v8-to-lcov  Convert executed Node V8 coverage to LCOV
 
 ${checkHelp()}`;
 }
