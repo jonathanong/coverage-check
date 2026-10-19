@@ -10,7 +10,7 @@ import {
   rmSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse } from "acorn";
 import { convert } from "ast-v8-to-istanbul";
 import coverage from "istanbul-lib-coverage";
@@ -36,11 +36,15 @@ export type NativeV8ToLcovResult = {
   sourceHashes: Record<string, string>;
 };
 
-function sourcePath(url: string, root: string): string | null {
+function sourcePath(url: string, roots: string[]): string | null {
   if (!url.startsWith("file://")) return null;
-  const path = relative(root, fileURLToPath(url)).split(sep).join("/");
-  if (path === "" || path === ".." || path.startsWith("../") || isAbsolute(path)) return null;
-  return path;
+  for (const root of roots) {
+    const path = relative(root, fileURLToPath(url)).split(sep).join("/");
+    if (path !== "" && path !== ".." && !path.startsWith("../") && !isAbsolute(path)) {
+      return path;
+    }
+  }
+  return null;
 }
 
 function assertPhysicalSource(url: string, root: string): string {
@@ -74,7 +78,8 @@ function parseExecutedSource(source: string, path: string): ReturnType<typeof pa
 export async function convertNativeV8ToLcov(
   options: NativeV8ToLcovOptions,
 ): Promise<NativeV8ToLcovResult> {
-  const root = realpathSync(resolve(options.sourceRoot));
+  const lexicalRoot = resolve(options.sourceRoot);
+  const root = realpathSync(lexicalRoot);
   const v8Dir = resolve(options.v8Dir);
   const output = resolve(options.output);
   if (options.include.length === 0 || options.include.some((pattern) => pattern.length === 0)) {
@@ -105,7 +110,7 @@ export async function convertNativeV8ToLcov(
         }>;
       };
       for (const entry of raw.result) {
-        const path = sourcePath(entry.url, root);
+        const path = sourcePath(entry.url, [root, lexicalRoot]);
         if (path === null || !included(path)) continue;
         const source = assertPhysicalSource(entry.url, root);
         const hash = createHash("sha256").update(source).digest("hex");
@@ -120,7 +125,13 @@ export async function convertNativeV8ToLcov(
           assertPreservedOffsets(source, code, path);
         }
         const ast = parseExecutedSource(code, path);
-        coverageMap.merge(await convert({ ast, code, coverage: entry }));
+        coverageMap.merge(
+          await convert({
+            ast,
+            code,
+            coverage: { ...entry, url: pathToFileURL(resolve(root, path)).href },
+          }),
+        );
       }
     }
 

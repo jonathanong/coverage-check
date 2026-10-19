@@ -77,21 +77,35 @@ if (answer !== 6 || branch(true) !== 1) throw new Error('unexpected result')
 }
 
 describe("native V8 to LCOV", () => {
-  it("resolves a symlinked source root consistently for raw URLs and report paths", async () => {
-    const { root, v8Dir } = captureFixture();
-    const alias = `${root}-alias`;
-    directories.push(alias);
-    symlinkSync(root, alias, "dir");
-    const output = join(root, "alias.lcov.info");
-    const result = await convertNativeV8ToLcov({
-      v8Dir,
-      sourceRoot: alias,
-      include: ["fixture.mts"],
-      output,
-    });
-    expect(result.files).toBe(1);
-    expect(readFileSync(output, "utf8")).toContain("SF:fixture.mts");
-  });
+  it.each(["physical", "lexical"])(
+    "resolves a symlinked source root with %s raw URLs",
+    async (spelling) => {
+      const { root, v8Dir } = captureFixture();
+      const alias = `${root}-alias`;
+      directories.push(alias);
+      symlinkSync(root, alias, "dir");
+      if (spelling === "lexical") {
+        for (const name of readdirSync(v8Dir)) {
+          const capture = join(v8Dir, name);
+          const raw = JSON.parse(readFileSync(capture, "utf8"));
+          const entry = raw.result.find((item: { url: string }) =>
+            item.url.endsWith("fixture.mts"),
+          );
+          entry.url = pathToFileURL(join(alias, "fixture.mts")).href;
+          writeFileSync(capture, JSON.stringify(raw));
+        }
+      }
+      const output = join(root, "alias.lcov.info");
+      const result = await convertNativeV8ToLcov({
+        v8Dir,
+        sourceRoot: alias,
+        include: ["fixture.mts"],
+        output,
+      });
+      expect(result.files).toBe(1);
+      expect(readFileSync(output, "utf8")).toContain("SF:fixture.mts");
+    },
+  );
 
   it("merges counts from two executed captures of the same source", async () => {
     const { root, v8Dir, source } = captureFixture();
