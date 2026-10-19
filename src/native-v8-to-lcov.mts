@@ -8,10 +8,10 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parse } from "acorn";
 import { convert } from "ast-v8-to-istanbul";
 import coverage from "istanbul-lib-coverage";
 import libReport from "istanbul-lib-report";
@@ -22,6 +22,7 @@ import {
   assertPreservedOffsets,
   requireTypeStripper,
 } from "./native-v8-input.mts";
+import { parseExecutedSource } from "./native-v8-source.mts";
 
 export type NativeV8ToLcovOptions = {
   v8Dir: string;
@@ -55,23 +56,6 @@ function assertPhysicalSource(url: string, root: string): string {
     throw new Error(`V8 source resolves outside source root: ${url}`);
   }
   return readFileSync(physical, "utf8");
-}
-
-function parseExecutedSource(source: string, path: string): ReturnType<typeof parse> {
-  try {
-    return parse(source, {
-      ecmaVersion: "latest",
-      sourceType: "module",
-      locations: true,
-      allowReturnOutsideFunction: true,
-      allowImportExportEverywhere: true,
-      allowAwaitOutsideFunction: true,
-      allowSuperOutsideMethod: true,
-      allowHashBang: true,
-    });
-  } catch (error) {
-    throw new Error(`cannot strictly parse executed source ${path}`, { cause: error });
-  }
 }
 
 /** Convert executed Node V8 coverage to LCOV without adding empty-file counters. */
@@ -124,7 +108,7 @@ export async function convertNativeV8ToLcov(
           code = stripTypeScriptTypes(source, { mode: "strip" });
           assertPreservedOffsets(source, code, path);
         }
-        const ast = parseExecutedSource(code, path);
+        const ast = parseExecutedSource(code, resolve(root, path));
         coverageMap.merge(
           await convert({
             ast,
@@ -141,7 +125,10 @@ export async function convertNativeV8ToLcov(
       .execute(libReport.createContext({ dir: temporary, coverageMap }));
     const report = resolve(temporary, "lcov.info");
     if (!existsSync(report)) throw new Error("Istanbul did not produce LCOV");
-    const lcov = readFileSync(report, "utf8");
+    const lcov = readFileSync(report, "utf8").replace(
+      /^SF:(.+)$/gm,
+      (_record, path: string) => `SF:${path.replaceAll("\\", "/")}`,
+    );
     const files = [...lcov.matchAll(/^SF:(.+)$/gm)].map((match) => match[1]!);
     if (files.length === 0) throw new Error("native V8 coverage produced no included sources");
     const fileSet = new Set(files);
@@ -159,6 +146,7 @@ export async function convertNativeV8ToLcov(
     }
     const staged = resolve(temporary, "published.lcov.info");
     // The report is complete and validated before replacing the requested output.
+    writeFileSync(report, lcov);
     renameSync(report, staged);
     renameSync(staged, output);
     return { files: files.length, sourceHashes: Object.fromEntries([...sourceHashes].sort()) };

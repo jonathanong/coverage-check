@@ -1,12 +1,19 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { convertNativeV8ToLcov } from "./native-v8-to-lcov.mts";
 
 const reporter = vi.hoisted(() => ({
-  mode: "normal" as "normal" | "missing" | "empty" | "duplicate" | "outside" | "omitted",
+  mode: "normal" as
+    | "normal"
+    | "missing"
+    | "empty"
+    | "duplicate"
+    | "outside"
+    | "omitted"
+    | "windows",
 }));
 const sourceMutation = vi.hoisted(() => ({ enabled: false, calls: 0 }));
 
@@ -33,6 +40,8 @@ vi.mock("istanbul-reports", () => ({
       execute: (context: { dir: string }) => {
         if (reporter.mode === "missing") return;
         const paths = reporter.mode === "omitted" ? ["first.mts"] : ["first.mts", "second.mts"];
+        if (reporter.mode === "windows")
+          paths.splice(0, 2, "nested\\first.mts", "nested\\second.mts");
         if (reporter.mode === "duplicate") paths.push("first.mts");
         if (reporter.mode === "outside") paths.push("../foreign.mts");
         if (reporter.mode === "empty") paths.length = 0;
@@ -56,13 +65,18 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
 });
 
-function ownedRawCapture(repeatFirst = false): { root: string; v8Dir: string; output: string } {
+function ownedRawCapture(
+  repeatFirst = false,
+  nested = false,
+): { root: string; v8Dir: string; output: string } {
   const root = mkdtempSync(join(tmpdir(), "coverage-check-reporter-fault-"));
   directories.push(root);
   const v8Dir = join(root, "raw-v8");
   mkdirSync(v8Dir);
-  const result = ["first.mts", "second.mts"].map((file, index) => {
+  const result = ["first.mts", "second.mts"].map((name, index) => {
+    const file = nested ? join("nested", name) : name;
     const source = `const value${index}: number = ${index}\n`;
+    mkdirSync(dirname(join(root, file)), { recursive: true });
     writeFileSync(join(root, file), source);
     return {
       url: pathToFileURL(join(root, file)).href,
@@ -81,6 +95,16 @@ function ownedRawCapture(repeatFirst = false): { root: string; v8Dir: string; ou
 }
 
 describe("native V8 reporter output boundary", () => {
+  it("normalizes Windows reporter paths before validation and publication", async () => {
+    const { root, v8Dir, output } = ownedRawCapture(false, true);
+    reporter.mode = "windows";
+    await convertNativeV8ToLcov({ v8Dir, sourceRoot: root, include: ["nested/**/*.mts"], output });
+    const lcov = readFileSync(output, "utf8");
+    expect(lcov).toContain("SF:nested/first.mts\n");
+    expect(lcov).toContain("SF:nested/second.mts\n");
+    expect(lcov).not.toContain("\\");
+  });
+
   it.each([
     ["missing", "did not produce LCOV"],
     ["empty", "no included sources"],
