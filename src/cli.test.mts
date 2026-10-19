@@ -64,6 +64,18 @@ describe("cli subcommand dispatch", () => {
     expect(await main(["unknown-command"])).toBe(2);
   });
 
+  it("dispatches native V8 conversion and reports its required inputs", async () => {
+    const errorSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      expect(await main(["native-v8-to-lcov"])).toBe(2);
+      expect(errorSpy.mock.calls.map((call) => String(call[0])).join("")).toContain(
+        "--v8-dir, --source-root, --include, and --output are required",
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("dispatches compare-summary", async () => {
     expect(await main(["compare-summary"])).toBe(2);
   });
