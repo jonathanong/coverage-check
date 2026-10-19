@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -11,8 +12,11 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "acorn";
+import { convert } from "ast-v8-to-istanbul";
+import coverage from "istanbul-lib-coverage";
+import libReport from "istanbul-lib-report";
+import reports from "istanbul-reports";
 import { minimatch } from "minimatch";
-import MCR from "monocart-coverage-reports";
 import {
   assertNativeV8Inputs,
   assertPreservedOffsets,
@@ -49,12 +53,12 @@ function assertPhysicalSource(url: string, root: string): string {
   return readFileSync(physical, "utf8");
 }
 
-function assertStrictlyParsable(source: string, path: string): void {
+function parseExecutedSource(source: string, path: string): ReturnType<typeof parse> {
   try {
-    // Match Monocart's strict Acorn pass. Its loose-parser fallback can emit
-    // plausible LCOV for syntax that it could not actually understand.
-    parse(source, {
+    return parse(source, {
       ecmaVersion: "latest",
+      sourceType: "module",
+      locations: true,
       allowReturnOutsideFunction: true,
       allowImportExportEverywhere: true,
       allowAwaitOutsideFunction: true,
@@ -70,8 +74,7 @@ function assertStrictlyParsable(source: string, path: string): void {
 export async function convertNativeV8ToLcov(
   options: NativeV8ToLcovOptions,
 ): Promise<NativeV8ToLcovResult> {
-  const root = resolve(options.sourceRoot);
-  const physicalRoot = realpathSync(root);
+  const root = realpathSync(resolve(options.sourceRoot));
   const v8Dir = resolve(options.v8Dir);
   const output = resolve(options.output);
   if (options.include.length === 0 || options.include.some((pattern) => pattern.length === 0)) {
@@ -86,51 +89,52 @@ export async function convertNativeV8ToLcov(
     options.include.some((pattern) => minimatch(path, pattern, { dot: true })) &&
     !(options.exclude ?? []).some((pattern) => minimatch(path, pattern, { dot: true }));
   const sourceHashes = new Map<string, string>();
+  const coverageMap = coverage.createCoverageMap({});
   mkdirSync(dirname(output), { recursive: true });
   const temporary = mkdtempSync(join(dirname(output), ".coverage-check-native-v8-"));
   try {
-    await new MCR.CoverageReport({
-      dataDir: v8Dir,
-      outputDir: temporary,
-      baseDir: root,
-      reports: ["lcovonly"],
-      logging: "error",
-      clean: true,
-      entryFilter: (entry) => {
+    for (const name of readdirSync(v8Dir).filter((file) => /^coverage-.*\.json$/.test(file))) {
+      const raw = JSON.parse(readFileSync(join(v8Dir, name), "utf8")) as {
+        result: Array<{
+          url: string;
+          functions: Array<{
+            functionName: string;
+            isBlockCoverage: boolean;
+            ranges: Array<{ startOffset: number; endOffset: number; count: number }>;
+          }>;
+        }>;
+      };
+      for (const entry of raw.result) {
         const path = sourcePath(entry.url, root);
-        if (path === null || !included(path)) return false;
-        assertPhysicalSource(entry.url, physicalRoot);
-        return true;
-      },
-      onEntry: (entry) => {
-        const path = sourcePath(entry.url, root);
-        if (path === null || !included(path)) throw new Error(`unexpected V8 source: ${entry.url}`);
-        if (typeof entry.source !== "string") throw new Error(`missing V8 source: ${path}`);
-        if (entry.source !== assertPhysicalSource(entry.url, physicalRoot)) {
-          throw new Error(`V8 source differs from the checkout: ${path}`);
+        if (path === null || !included(path)) continue;
+        const source = assertPhysicalSource(entry.url, root);
+        const hash = createHash("sha256").update(source).digest("hex");
+        const previous = sourceHashes.get(path);
+        if (previous !== undefined && previous !== hash) {
+          throw new Error(`V8 source changed between captures: ${path}`);
         }
-        const hash = createHash("sha256").update(entry.source).digest("hex");
         sourceHashes.set(path, hash);
+        let code = source;
         if (/\.(?:ts|mts|cts)$/.test(path)) {
-          if (entry.sourceMap !== undefined && entry.sourceMap !== null) {
-            throw new Error(`raw TypeScript source map is unsupported for ${path}`);
-          }
-          const stripped = stripTypeScriptTypes(entry.source, { mode: "strip" });
-          assertPreservedOffsets(entry.source, stripped, path);
-          entry.source = stripped;
+          code = stripTypeScriptTypes(source, { mode: "strip" });
+          assertPreservedOffsets(source, code, path);
         }
-        assertStrictlyParsable(entry.source, path);
-      },
-    }).generate();
+        const ast = parseExecutedSource(code, path);
+        coverageMap.merge(await convert({ ast, code, coverage: entry }));
+      }
+    }
 
     if (sourceHashes.size === 0) throw new Error("native V8 coverage produced no included sources");
+    reports
+      .create("lcovonly", { projectRoot: root })
+      .execute(libReport.createContext({ dir: temporary, coverageMap }));
     const report = resolve(temporary, "lcov.info");
-    if (!existsSync(report)) throw new Error("Monocart did not produce LCOV");
+    if (!existsSync(report)) throw new Error("Istanbul did not produce LCOV");
     const lcov = readFileSync(report, "utf8");
     const files = [...lcov.matchAll(/^SF:(.+)$/gm)].map((match) => match[1]!);
     if (files.length === 0) throw new Error("native V8 coverage produced no included sources");
     const fileSet = new Set(files);
-    if (fileSet.size !== files.length) throw new Error("Monocart emitted duplicate LCOV sources");
+    if (fileSet.size !== files.length) throw new Error("Istanbul emitted duplicate LCOV sources");
     for (const file of files) {
       if (!included(file) || !sourceHashes.has(file)) {
         throw new Error(`LCOV source is outside the requested source scope: ${file}`);
@@ -140,7 +144,7 @@ export async function convertNativeV8ToLcov(
       files.length !== sourceHashes.size ||
       [...sourceHashes.keys()].some((file) => !fileSet.has(file))
     ) {
-      throw new Error("Monocart omitted one or more included V8 sources");
+      throw new Error("Istanbul omitted one or more included V8 sources");
     }
     const staged = resolve(temporary, "published.lcov.info");
     // The report is complete and validated before replacing the requested output.

@@ -25,7 +25,7 @@ function validFunction(value: unknown): boolean {
   );
 }
 
-/** Reject any raw coverage input that Monocart would otherwise silently skip. */
+/** Reject malformed raw coverage before converting any executed source. */
 export function assertNativeV8Inputs(dir: string): void {
   let coverageFiles = 0;
   for (const name of readdirSync(dir)) {

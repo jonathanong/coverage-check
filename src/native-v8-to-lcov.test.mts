@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseLcovFull } from "./lcov-records.mts";
@@ -77,6 +77,72 @@ if (answer !== 6 || branch(true) !== 1) throw new Error('unexpected result')
 }
 
 describe("native V8 to LCOV", () => {
+  it("resolves a symlinked source root consistently for raw URLs and report paths", async () => {
+    const { root, v8Dir } = captureFixture();
+    const alias = `${root}-alias`;
+    directories.push(alias);
+    symlinkSync(root, alias, "dir");
+    const output = join(root, "alias.lcov.info");
+    const result = await convertNativeV8ToLcov({
+      v8Dir,
+      sourceRoot: alias,
+      include: ["fixture.mts"],
+      output,
+    });
+    expect(result.files).toBe(1);
+    expect(readFileSync(output, "utf8")).toContain("SF:fixture.mts");
+  });
+
+  it("merges counts from two executed captures of the same source", async () => {
+    const { root, v8Dir, source } = captureFixture();
+    const capture = join(
+      v8Dir,
+      readdirSync(v8Dir).find((name) => name.startsWith("coverage-"))!,
+    );
+    const args = { v8Dir, sourceRoot: root, include: ["fixture.mts"] };
+    const once = join(root, "once.lcov.info");
+    await convertNativeV8ToLcov({ ...args, output: once });
+    writeFileSync(join(v8Dir, "coverage-second.json"), readFileSync(capture));
+    const twice = join(root, "twice.lcov.info");
+    await convertNativeV8ToLcov({ ...args, output: twice });
+    const line = source
+      .slice(0, source.indexOf("return request.value * multiplier"))
+      .split("\n").length;
+    const hits = (file: string) =>
+      Number(readFileSync(file, "utf8").match(new RegExp(`^DA:${line},(\\d+)$`, "m"))?.[1]);
+    expect(hits(once)).toBeGreaterThan(0);
+    expect(hits(twice)).toBe(hits(once) * 2);
+  });
+
+  it.each(["root", "parent", "sibling"] as const)(
+    "does not turn a %s URL into an included source file",
+    async (location) => {
+      const { root, v8Dir } = captureFixture();
+      const capture = join(
+        v8Dir,
+        readdirSync(v8Dir).find((name) => name.startsWith("coverage-"))!,
+      );
+      const raw = JSON.parse(readFileSync(capture, "utf8"));
+      const outside =
+        location === "root"
+          ? root
+          : location === "parent"
+            ? dirname(root)
+            : join(dirname(root), "other.mts");
+      raw.result.find((entry: { url: string }) => entry.url.endsWith("fixture.mts")).url =
+        pathToFileURL(outside).href;
+      writeFileSync(capture, JSON.stringify(raw));
+      await expect(
+        convertNativeV8ToLcov({
+          v8Dir,
+          sourceRoot: root,
+          include: ["*.mts"],
+          output: join(root, "filtered.lcov.info"),
+        }),
+      ).rejects.toThrow("no included sources");
+    },
+  );
+
   it("omits type-only and call-continuation counters while retaining real uncovered code", async () => {
     const { root, v8Dir, source } = captureFixture();
     const output = join(root, "report", "lcov.info");
@@ -267,6 +333,7 @@ describe("native V8 to LCOV", () => {
   });
 
   it("requires an explicit source scope and output in the CLI", () => {
+    expect(() => parseNativeV8ToLcovArgs(["--v8-dir"])).toThrow("requires a value");
     expect(() => parseNativeV8ToLcovArgs(["--v8-dir", "raw"])).toThrow("required");
     expect(() => parseNativeV8ToLcovArgs(["--unknown", "value"])).toThrow("unknown flag");
     expect(

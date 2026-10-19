@@ -336,10 +336,11 @@ Hit counts are **summed** across inputs (consistent with the package's internal 
 
 ### Native Node TypeScript coverage
 
-`native-v8-to-lcov` converts an executed `NODE_V8_COVERAGE` directory to LCOV with Monocart's
-V8 reporter. It uses Node's type stripping for raw `.ts`, `.mts`, and `.cts` entries so type-only
-syntax and multiline call continuations do not become invented zero-hit lines. It preserves
-genuine uncovered executable lines and branches. This command requires a Node version with
+`native-v8-to-lcov` converts an executed `NODE_V8_COVERAGE` directory to LCOV with the published
+AST-aware V8-to-Istanbul converter and Istanbul LCOV reporter. It uses Node's type stripping for
+raw `.ts`, `.mts`, and `.cts` entries so type-only syntax and multiline call continuations do not
+become invented zero-hit lines. It preserves genuine uncovered executable lines and branches.
+This command requires a Node version with
 `node:module.stripTypeScriptTypes` support and erasable TypeScript syntax; unsupported syntax or
 source maps fail the conversion. The input directory must contain only raw `coverage-*.json`
 captures; malformed or empty captures and separate source-cache JSON files fail closed.
@@ -355,12 +356,12 @@ coverage-check native-v8-to-lcov \
 ```
 
 Repeat `--include` or `--exclude` for more source globs. The converter strictly parses stripped
-source before reporting, so a reporter's loose-parser fallback cannot silently fabricate LCOV.
+source before reporting; unsupported syntax fails without a loose-parser fallback.
 It only reports scripts actually present in
 the V8 capture: it does not add empty reports for unloaded files. It fails if no included source
 is reported, or if the reporter omits one. The typed `convertNativeV8ToLcov()` API also returns
-SHA-256 hashes of the source text used for each output file. Each included script must resolve
-inside the source root and match the current file there. Capture and conversion must use the
+SHA-256 hashes of the current source text used for each output file. Each included script must
+resolve inside the source root. Capture and conversion must use the
 same frozen source checkout; raw V8 coverage does not itself bind a source-file hash. The output
 is written only after conversion and scope validation succeed. Existing `merge` and `check`
 commands can consume the resulting LCOV without changing their patch or missing-file rules.
