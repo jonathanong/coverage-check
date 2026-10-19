@@ -159,6 +159,30 @@ describe("native source module grammar", () => {
     expect(() => parseExecutedSource(commonjs, file)).not.toThrow();
   });
 
+  it("does not inherit a project module type across the node_modules package boundary", async () => {
+    const { root } = fixture("js", undefined, "module");
+    const directory = join(root, "node_modules", "legacy");
+    mkdirSync(directory, { recursive: true });
+    const file = join(directory, "fixture.js");
+    writeFileSync(file, commonjs);
+    const raw = join(root, "raw");
+    execFileSync(process.execPath, [file], {
+      env: { ...process.env, NODE_V8_COVERAGE: raw, NODE_DISABLE_COMPILE_CACHE: "1" },
+      stdio: "pipe",
+    });
+    const output = join(root, "lcov.info");
+    await convertNativeV8ToLcov({
+      v8Dir: raw,
+      sourceRoot: root,
+      include: ["node_modules/legacy/*.js"],
+      output,
+    });
+    const result = parseLcovFull(readFileSync(output, "utf8")).get(
+      "node_modules/legacy/fixture.js",
+    );
+    expect(result?.lines.get(5)).toBe(0);
+  });
+
   it("rejects an unreadable package contract rather than guessing its grammar", () => {
     const { root, file } = fixture("js");
     writeFileSync(file, "const value = 1");

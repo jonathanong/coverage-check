@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { convert } from "ast-v8-to-istanbul";
 import coverage from "istanbul-lib-coverage";
 import libReport from "istanbul-lib-report";
@@ -20,6 +20,7 @@ import { minimatch } from "minimatch";
 import {
   assertNativeV8Inputs,
   assertPreservedOffsets,
+  nativeV8SourceFile,
   requireTypeStripper,
 } from "./native-v8-input.mts";
 import { parseExecutedSource } from "./native-v8-source.mts";
@@ -37,10 +38,9 @@ export type NativeV8ToLcovResult = {
   sourceHashes: Record<string, string>;
 };
 
-function sourcePath(url: string, roots: string[]): string | null {
-  if (!url.startsWith("file://")) return null;
+function sourcePath(file: string, roots: string[]): string | null {
   for (const root of roots) {
-    const path = relative(root, fileURLToPath(url)).split(sep).join("/");
+    const path = relative(root, file).split(sep).join("/");
     if (path !== "" && path !== ".." && !path.startsWith("../") && !isAbsolute(path)) {
       return path;
     }
@@ -48,12 +48,11 @@ function sourcePath(url: string, roots: string[]): string | null {
   return null;
 }
 
-function assertPhysicalSource(url: string, root: string): string {
-  const file = fileURLToPath(url);
+function assertPhysicalSource(file: string, root: string): string {
   const physical = realpathSync(file);
   const path = relative(root, physical);
   if (path === "" || path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) {
-    throw new Error(`V8 source resolves outside source root: ${url}`);
+    throw new Error(`V8 source resolves outside source root: ${file}`);
   }
   return readFileSync(physical, "utf8");
 }
@@ -94,9 +93,11 @@ export async function convertNativeV8ToLcov(
         }>;
       };
       for (const entry of raw.result) {
-        const path = sourcePath(entry.url, [root, lexicalRoot]);
+        const file = nativeV8SourceFile(entry.url);
+        if (file === null) continue;
+        const path = sourcePath(file, [root, lexicalRoot]);
         if (path === null || !included(path)) continue;
-        const source = assertPhysicalSource(entry.url, root);
+        const source = assertPhysicalSource(file, root);
         const hash = createHash("sha256").update(source).digest("hex");
         const previous = sourceHashes.get(path);
         if (previous !== undefined && previous !== hash) {

@@ -1,5 +1,5 @@
 import { readFileSync, realpathSync } from "node:fs";
-import { dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { compileFunction } from "node:vm";
 import { parse } from "acorn";
 
@@ -8,6 +8,7 @@ type SourceType = "module" | "commonjs";
 function packageSourceType(file: string): SourceType | undefined {
   let directory = dirname(file);
   for (;;) {
+    if (basename(directory) === "node_modules") return "commonjs";
     try {
       const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")) as {
         type?: unknown;

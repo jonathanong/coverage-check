@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 function validFunction(value: unknown): boolean {
@@ -23,6 +23,13 @@ function validFunction(value: unknown): boolean {
       Number.isSafeInteger(range.count) &&
       range.count >= 0,
   );
+}
+
+/** Node's native TypeScript CommonJS loader can emit absolute paths instead of file URLs. */
+export function nativeV8SourceFile(url: string): string | null {
+  const file = url.startsWith("file:") ? fileURLToPath(url) : isAbsolute(url) ? url : null;
+  if (file?.includes("\0")) throw new Error("invalid native V8 source path");
+  return file;
 }
 
 /** Reject malformed raw coverage before converting any executed source. */
@@ -55,11 +62,11 @@ export function assertNativeV8Inputs(dir: string): void {
         throw new Error(`invalid Node V8 coverage file: ${name}`);
       }
       for (const entry of value.result) {
-        if (!entry.url.startsWith("file:")) continue;
         try {
-          fileURLToPath(entry.url);
+          nativeV8SourceFile(entry.url);
         } catch {
-          throw new Error(`invalid file URL in Node V8 coverage file: ${name}`);
+          const kind = entry.url.startsWith("file:") ? "file URL" : "source path";
+          throw new Error(`invalid ${kind} in Node V8 coverage file: ${name}`);
         }
       }
     } else {
