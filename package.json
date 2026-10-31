@@ -45,7 +45,7 @@
     "istanbul-lib-report": "3.0.1",
     "istanbul-reports": "3.2.0",
     "js-yaml": "^5.2.1",
-    "minimatch": "^10.1.1",
+    "minimatch": "^11.0.1",
     "monocart-coverage-reports": "^2.12.11"
   },
   "peerDependencies": {
