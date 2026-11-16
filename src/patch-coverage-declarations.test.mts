@@ -165,4 +165,38 @@ describe("executable arrow declaration patch coverage", () => {
     );
     expect(result.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
   });
+  it("retains CommonJS assignment counters when esbuild adds unmapped module-wrapper operations", () => {
+    const result = check(
+      `SF:${file}\nDA:1,0\nDA:2,2\nend_of_record\n`,
+      "module.exports = () =>\n  run();",
+      [1, 2],
+    );
+    expect(result.buckets[0]).toMatchObject({ coverable: 2, hit: 1, passed: false });
+    expect(result.missingCoverage).toEqual([]);
+  });
+
+  it("preserves sparse array initializers sharing an arrow declaration line", () => {
+    const contents = "const holes = [,,value]; export const callback = () =>\n  run();";
+    expect(
+      check(`SF:${file}\nDA:1,0\nDA:2,2\nend_of_record\n`, contents, [1, 2]).buckets[0],
+    ).toMatchObject({ coverable: 2, hit: 1, passed: false });
+  });
+
+  it("does not require an unchanged arrow body when only its declaration changes", () => {
+    const result = check(`SF:${file}\nDA:3,0\nend_of_record\n`, source, [3]);
+    expect(result.buckets).toEqual([]);
+    expect(result.missingCoverage).toEqual([]);
+  });
+
+  it("retains a changed uncovered body without charging its unchanged declaration", () => {
+    const result = check(`SF:${file}\nDA:3,0\nDA:4,0\nend_of_record\n`, source, [4]);
+    expect(result.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
+    expect(result.missingCoverage).toEqual([]);
+  });
+
+  it("does not infer missing instrumentation from an untracked declaration", () => {
+    const result = check(`SF:${file}\nDA:4,2\nend_of_record\n`, source, [3, 4]);
+    expect(result.buckets[0]).toMatchObject({ coverable: 1, hit: 1, passed: true });
+    expect(result.missingCoverage).toEqual([]);
+  });
 });

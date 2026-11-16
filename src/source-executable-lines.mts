@@ -61,19 +61,18 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
   }
   const mappings: { offset: number; line: number }[] = [];
   eachMapping(map, (mapping) => {
-    if (mapping.originalLine !== null)
-      mappings.push({
-        offset: offsets[mapping.generatedLine - 1]! + mapping.generatedColumn,
-        line: mapping.originalLine,
-      });
+    mappings.push({
+      offset: offsets[mapping.generatedLine - 1]! + mapping.generatedColumn,
+      line: Number(mapping.originalLine),
+    });
   });
   const headers: { start: number; end: number; bodyEnd: number }[] = [];
   const bodyLines = new Map<number, Set<number>>();
   const operationsByOffset = new Map<number, number | null>();
   const executable = new Set<number>();
   const preserve = (node: AnyNode) => {
-    if (!node.loc) return;
-    const { line } = originalPositionFor(map, node.loc.start);
+    // Acorn populates every node location because this parse uses locations: true.
+    const { line } = originalPositionFor(map, node.loc!.start);
     operationsByOffset.set(node.start, line);
     if (line !== null) executable.add(line);
   };
@@ -154,9 +153,12 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
         continue;
       declarations.add(mapping.line);
       const lines = bodyLines.get(mapping.line) ?? new Set<number>();
-      for (const [, line] of body) if (line !== null) lines.add(line);
+      for (const [, line] of body) lines.add(line!);
       bodyLines.set(mapping.line, lines);
     }
   }
+  // Unmapped segments normalize to zero, which is never a source line.
+  declarations.delete(0);
+  bodyLines.delete(0);
   return { declarations, bodyLines };
 }
