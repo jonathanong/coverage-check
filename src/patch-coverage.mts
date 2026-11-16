@@ -8,7 +8,7 @@ import type {
   MissingCoverageResult,
 } from "./types.mts";
 import { matchRule } from "./rules.mts";
-import { coverageDisposition, findMissingCoverage } from "./scope.mts";
+import { findMissingCoverage } from "./scope.mts";
 import { analyzeExecutableLines } from "./source-executable-lines.mts";
 
 export function computePatchCoverage(
@@ -24,42 +24,19 @@ export function computePatchCoverage(
 } {
   const bucketMap = new Map<string, BucketResult>();
   const informational: FileCoverageResult[] = [];
-  const missingArrowBodies: MissingCoverageResult[] = [];
 
   for (const [file, changedLineSet] of diff) {
     const fileLines = lcov.get(file);
     if (fileLines === undefined) continue; // not in lcov scope — skip
 
     let declarations = new Set<number>();
-    let bodyLines = new Map<number, Set<number>>();
-    const rule = matchRule(file, rules);
     if (readSource && [...changedLineSet].some((line) => fileLines.has(line))) {
       try {
-        ({ declarations, bodyLines } = analyzeExecutableLines(readSource(file), file));
+        declarations = analyzeExecutableLines(readSource(file), file).declarations;
       } catch {
         // Source proof is optional for existing counters: unavailable or unsupported source
         // must retain every DA entry. Missing-file scope analysis below still fails closed.
       }
-    }
-    if (
-      rule !== null &&
-      rule.patch_coverage_min > 0 &&
-      (!scope || coverageDisposition(file, scope) === "aggregate")
-    ) {
-      const missing = new Set<number>();
-      for (const [header, lines] of bodyLines) {
-        if (!changedLineSet.has(header) || !fileLines.has(header)) continue;
-        // Providers count statements, not every mapped expression inside a callback body.
-        // Sparse reports may omit an unchanged body statement's counter entirely.
-        if ([...lines].some((line) => fileLines.has(line) || !changedLineSet.has(line))) continue;
-        for (const line of lines) missing.add(line);
-      }
-      if (missing.size > 0)
-        missingArrowBodies.push({
-          file,
-          lines: [...missing].sort((a, b) => a - b),
-          rule: rule.paths,
-        });
     }
     const coverable: number[] = [];
     const uncoveredLines: number[] = [];
@@ -77,6 +54,7 @@ export function computePatchCoverage(
 
     if (coverable.length === 0) continue;
 
+    const rule = matchRule(file, rules);
     const fileResult: FileCoverageResult = {
       file,
       coverable: coverable.length,
@@ -122,9 +100,6 @@ export function computePatchCoverage(
   return {
     buckets,
     informational,
-    missingCoverage: [
-      ...missingArrowBodies,
-      ...(scope ? findMissingCoverage(diff, lcov, rules, scope, readSource) : []),
-    ],
+    missingCoverage: scope ? findMissingCoverage(diff, lcov, rules, scope, readSource) : [],
   };
 }

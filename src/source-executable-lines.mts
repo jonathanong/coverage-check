@@ -17,7 +17,6 @@ export function analyzeExecutableLines(source: string, path: string) {
     return {
       lines: new Set<number>(),
       declarations: new Set<number>(),
-      bodyLines: new Map<number, Set<number>>(),
     };
   const result = transformSync(source, {
     format: "esm",
@@ -43,9 +42,9 @@ export function analyzeExecutableLines(source: string, path: string) {
     if (declarationStart !== 0 && /(?:;|\sfrom\s+["'][^"']+["']\s*;?)\s*$/.test(trimmed))
       declarationStart = 0;
   }
-  const { declarations, bodyLines } = arrowDeclarationLines(result.code, result.map);
+  const declarations = arrowDeclarationLines(result.code, result.map);
   for (const line of declarations) lines.delete(line);
-  return { lines, declarations, bodyLines };
+  return { lines, declarations };
 }
 
 /** Emitted executable lines, excluding source-only declarations and import continuations. */
@@ -59,7 +58,7 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
     program = parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true });
   } catch {
     // Declaration proof is optional; esbuild's emitted lines remain authoritative for scope.
-    return { declarations: new Set<number>(), bodyLines: new Map<number, Set<number>>() };
+    return new Set<number>();
   }
   const map = new TraceMap(sourceMap);
   const offsets = [0];
@@ -74,8 +73,7 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
     });
   });
   const headers: { start: number; end: number; bodyEnd: number }[] = [];
-  const bodyLines = new Map<number, Set<number>>();
-  const defaultInitializers: { start: number; end: number }[] = [];
+  const initializers: { start: number; end: number }[] = [];
   const operationsByOffset = new Map<number, number | null>();
   const executable = new Set<number>();
   const preserve = (node: AnyNode) => {
@@ -122,7 +120,7 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
     if (operations.has(node.type)) preserve(node);
     if (node.type === "AssignmentPattern") {
       preserve(node.right);
-      defaultInitializers.push(node.right);
+      initializers.push(node.right);
     }
     if (node.type === "ClassDeclaration" && node.superClass) preserve(node.superClass);
     if (node.type === "PropertyDefinition") {
@@ -140,8 +138,11 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
       node.init &&
       node.init.type !== "ArrowFunctionExpression" &&
       node.init.type !== "FunctionExpression"
-    )
+    ) {
       preserve(node);
+      preserve(node.init);
+      initializers.push(node.init);
+    }
     for (const value of Object.values(node)) {
       if (Array.isArray(value)) {
         for (const child of value) if (child && typeof child.type === "string") visit(child);
@@ -156,14 +157,10 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
     }
   }
   visit(program);
-  // Retain mappings throughout default RHS expressions, including multiline values and arguments.
+  // Retain runtime initializer mappings, including multiline values and arguments.
   // Ambiguous nested declaration mappings stay counted rather than being discarded.
   for (const mapping of mappings) {
-    if (
-      defaultInitializers.some(
-        (range) => mapping.offset >= range.start && mapping.offset < range.end,
-      )
-    )
+    if (initializers.some((range) => mapping.offset >= range.start && mapping.offset < range.end))
       executable.add(mapping.line);
   }
   const declarations = new Set<number>();
@@ -181,13 +178,9 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
       )
         continue;
       declarations.add(mapping.line);
-      const lines = bodyLines.get(mapping.line) ?? new Set<number>();
-      for (const [, line] of body) lines.add(line!);
-      bodyLines.set(mapping.line, lines);
     }
   }
   // Unmapped segments normalize to zero, which is never a source line.
   declarations.delete(0);
-  bodyLines.delete(0);
-  return { declarations, bodyLines };
+  return declarations;
 }

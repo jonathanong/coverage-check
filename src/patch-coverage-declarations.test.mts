@@ -126,54 +126,6 @@ describe("executable arrow declaration patch coverage", () => {
     ).toMatchObject({ coverable: 2, hit: 1, passed: false });
   });
 
-  it("fails closed for header-only instrumentation without inventing executable declaration counters", () => {
-    const result = check(
-      `SF:${file}\nFN:3,approve\nFNDA:0,approve\nFN:6,reject\nFNDA:0,reject\nDA:3,0\nDA:6,0\nend_of_record\n`,
-    );
-    expect(result.buckets).toEqual([]);
-    expect(result.missingCoverage).toEqual([{ file, lines: [4, 7], rule: "src/**" }]);
-  });
-
-  it("does not let another callback's coverage hide a missing body", () => {
-    const result = check(`SF:${file}\nDA:3,2\nDA:4,2\nDA:6,0\nend_of_record\n`);
-    expect(result.buckets[0]).toMatchObject({ coverable: 1, hit: 1 });
-    expect(result.missingCoverage).toEqual([{ file, lines: [7], rule: "src/**" }]);
-  });
-
-  it("detects missing block callback bodies while retaining unrelated untracked lines", () => {
-    const contents =
-      "export const callback = () => {\n  missing();\n};\nconst other = unrelated();\n";
-    const result = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3, 4]);
-    expect(result.missingCoverage).toEqual([{ file, lines: [2], rule: "src/**" }]);
-  });
-
-  it("keeps nested callback body ownership distinct from covered outer statements", () => {
-    const contents =
-      "const outer = () => {\n  const inner = () =>\n    missing();\n  return inner;\n};\n";
-    const result = check(
-      `SF:${file}\nDA:1,1\nDA:2,0\nDA:4,1\nend_of_record\n`,
-      contents,
-      [1, 2, 3, 4, 5],
-    );
-    expect(result.missingCoverage).toEqual([{ file, lines: [3], rule: "src/**" }]);
-  });
-
-  it.each([
-    { rules: [{ paths: "src/**", patch_coverage_min: 0 }], scope },
-    { rules: [{ paths: "other/**", patch_coverage_min: 100 }], scope },
-    { rules, scope: { ...scope, supplemental: [file] } },
-    { rules, scope: { ...scope, ignored: [file] } },
-  ])("preserves opt-out policy for partial instrumentation: %j", (policy) => {
-    const result = computePatchCoverage(
-      new Map([[file, new Set([3, 4])]]),
-      parseLcov(`SF:${file}\nDA:3,0\nend_of_record\n`),
-      policy.rules,
-      policy.scope,
-      () => source,
-    );
-    expect(result.missingCoverage).toEqual([]);
-  });
-
   it("fails closed when the callback bodies have no coverage artifact", () => {
     expect(check("").missingCoverage).toEqual([{ file, lines: [4, 7], rule: "src/**" }]);
   });
@@ -266,44 +218,12 @@ describe("executable arrow declaration patch coverage", () => {
     expect(result.buckets).toEqual([]);
     expect(result.missingCoverage).toEqual([]);
   });
-  it("requires instrumentation for a class declaration's superclass evaluation inside a callback", () => {
-    const contents = "export const create = () => {\n  class Derived extends Base {}\n};\n";
-    const missing = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3]);
-    expect(missing.buckets).toEqual([]);
-    expect(missing.missingCoverage).toEqual([{ file, lines: [2], rule: "src/**" }]);
-    const unhit = check(`SF:${file}\nDA:1,1\nDA:2,0\nend_of_record\n`, contents, [1, 2, 3]);
-    expect(unhit.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
-    expect(unhit.missingCoverage).toEqual([]);
-    const hit = check(`SF:${file}\nDA:1,1\nDA:2,1\nend_of_record\n`, contents, [1, 2, 3]);
-    expect(hit.buckets[0]).toMatchObject({ coverable: 1, hit: 1, passed: true });
-  });
-
   it("does not invent superclass evaluation for a bare class declaration", () => {
     const contents = "export const create = () => {\n  class Bare {}\n};\n";
     const result = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3]);
     expect(result.buckets).toEqual([]);
     expect(result.missingCoverage).toEqual([]);
   });
-  it.each([
-    "static value = 1;",
-    "static value;",
-    "value = 1;",
-    "[key];",
-    "static [key] = 1;",
-    "[key]() {}",
-    "get [key]() {}",
-    "static { const value = 1; }",
-  ])("retains class member execution inside callback bodies: %s", (member) => {
-    const contents = `export const create = () => {\n  class C { ${member} }\n};\n`;
-    const missing = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3]);
-    expect(missing.buckets).toEqual([]);
-    expect(missing.missingCoverage).toEqual([{ file, lines: [2], rule: "src/**" }]);
-    const unhit = check(`SF:${file}\nDA:1,1\nDA:2,0\nend_of_record\n`, contents, [1, 2, 3]);
-    expect(unhit.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
-    const hit = check(`SF:${file}\nDA:1,1\nDA:2,1\nend_of_record\n`, contents, [1, 2, 3]);
-    expect(hit.buckets[0]).toMatchObject({ coverable: 1, hit: 1, passed: true });
-  });
-
   it("accepts a multiline static initializer's value counter without requiring a separate field-key counter", async () => {
     const contents =
       "export const create = () => {\n  class C {\n    static value =\n      1;\n  }\n};\n";
@@ -373,17 +293,6 @@ describe("executable arrow declaration patch coverage", () => {
     expect(sparseResult).toEqual(fullResult);
   });
 
-  it("still detects wholly changed callback bodies missing from projected header-only instrumentation", () => {
-    const contents =
-      "export const choose = condition => {\n  return condition\n    ? foo()\n    : bar();\n};\n";
-    const changed = [1, 2, 3, 4, 5];
-    const full = `SF:${file}\nFN:1,choose\nFNDA:0,choose\nDA:1,0\nend_of_record\n`;
-    const sparse = projectPatchLcov(full, new Map([[file, new Set(changed)]]));
-    const fullResult = check(full, contents, changed);
-    expect(fullResult.missingCoverage).toEqual([{ file, lines: [2, 3, 4], rule: "src/**" }]);
-    expect(check(sparse, contents, changed)).toEqual(fullResult);
-  });
-
   it("preserves genuinely uncovered changed statement counters in full and projected LCOV", async () => {
     const contents =
       "export const choose = condition => {\n  return condition\n    ? foo()\n    : bar();\n};\n";
@@ -393,5 +302,39 @@ describe("executable arrow declaration patch coverage", () => {
     const fullResult = check(full, contents, changed);
     expect(fullResult.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
     expect(check(sparse, contents, changed)).toEqual(fullResult);
+  });
+  it.each([
+    "const value =\n  42; const callback = () =>\n    value;",
+    "const value = collect(\n  fallback); const callback = () =>\n    value;",
+    "const value = [\n  42]; const callback = () =>\n    value;",
+    "const value = new Factory(\n  fallback); const callback = () =>\n    value;",
+  ])("retains a multiline variable initializer sharing an arrow header: %s", (contents) => {
+    expect(
+      check(`SF:${file}\nDA:2,0\nDA:3,1\nend_of_record\n`, contents, [1, 2, 3]).buckets[0],
+    ).toMatchObject({ coverable: 2, hit: 1, passed: false });
+  });
+
+  it("does not infer executable body counters omitted by a report's ignore handling", () => {
+    const contents = "const callback = () => {\n  /* istanbul ignore next */\n  omitted();\n};\n";
+    const result = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3, 4]);
+    expect(result.missingCoverage).toEqual([]);
+    // No ignore-directive parser is introduced: a wholly absent file still fails closed.
+    expect(check("", contents, [3]).missingCoverage).toEqual([
+      { file, lines: [3], rule: "src/**" },
+    ]);
+  });
+  it.each([
+    "class C extends\n  Base {} const callback = () =>\n    run();",
+    "class C { static value =\n  1; } const callback = () =>\n    run();",
+    "class C {\n  static value; } const callback = () =>\n    run();",
+    "class C {\n  [key]; } const callback = () =>\n    run();",
+    "class C {\n  static [key] = 1; } const callback = () =>\n    run();",
+    "class C {\n  [key]() {} } const callback = () =>\n    run();",
+    "class C {\n  get [key]() {} } const callback = () =>\n    run();",
+    "class C { static {\n  const value = 1; } } const callback = () =>\n    run();",
+  ])("retains executable class operations sharing an arrow header: %s", (contents) => {
+    const result = check(`SF:${file}\nDA:2,0\nDA:3,1\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(result.buckets[0]).toMatchObject({ coverable: 2, hit: 1, passed: false });
+    expect(result.missingCoverage).toEqual([]);
   });
 });
