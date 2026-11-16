@@ -1,6 +1,7 @@
 import { transformSync, type Loader } from "esbuild";
 import { eachMapping, originalPositionFor, TraceMap } from "@jridgewell/trace-mapping";
 import { parse, type AnyNode } from "acorn";
+import { evaluatedChildFields, hasRuntimeStart } from "./source-evaluated-children.mts";
 
 function loaderFor(path: string): Loader | null {
   if (path.endsWith(".tsx")) return "tsx";
@@ -73,7 +74,6 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
     });
   });
   const headers: { start: number; end: number; bodyEnd: number }[] = [];
-  const initializers: { start: number; end: number }[] = [];
   const operationsByOffset = new Map<number, number | null>();
   const executable = new Set<number>();
   const preserve = (node: AnyNode) => {
@@ -82,45 +82,12 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
     operationsByOffset.set(node.start, line);
     if (line !== null) executable.add(line);
   };
-  const operations = new Set([
-    "ExpressionStatement",
-    "ReturnStatement",
-    "ThrowStatement",
-    "IfStatement",
-    "SwitchStatement",
-    "ForStatement",
-    "ForInStatement",
-    "ForOfStatement",
-    "WhileStatement",
-    "DoWhileStatement",
-    "CallExpression",
-    "NewExpression",
-    "AwaitExpression",
-    "YieldExpression",
-    "UpdateExpression",
-    "AssignmentExpression",
-    "AssignmentPattern",
-    "TaggedTemplateExpression",
-    "ImportExpression",
-    "BinaryExpression",
-    "LogicalExpression",
-    "ConditionalExpression",
-    "MemberExpression",
-    "SequenceExpression",
-    "UnaryExpression",
-    "TemplateLiteral",
-    "SpreadElement",
-  ]);
-  function visit(node: AnyNode) {
+  function visit(node: AnyNode, evaluated = false) {
+    if (hasRuntimeStart(node.type, evaluated)) preserve(node);
     if (node.type === "ArrowFunctionExpression") {
       const body = node.body;
       headers.push({ start: node.start, end: body.start, bodyEnd: body.end });
       if (body.type !== "BlockStatement") preserve(body);
-    }
-    if (operations.has(node.type)) preserve(node);
-    if (node.type === "AssignmentPattern") {
-      preserve(node.right);
-      initializers.push(node.right);
     }
     if (node.type === "ClassDeclaration" && node.superClass) preserve(node.superClass);
     if (node.type === "PropertyDefinition") {
@@ -131,38 +98,32 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
     if (node.type === "MethodDefinition" && node.computed) preserve(node.key);
     if (node.type === "Property") {
       if (node.computed) preserve(node.key);
-      if (node.value.type !== "ArrowFunctionExpression") preserve(node.value);
+      if (node.value.type !== "ArrowFunctionExpression" && node.value.type !== "FunctionExpression")
+        preserve(node.value);
     }
     if (
       node.type === "VariableDeclarator" &&
       node.init &&
       node.init.type !== "ArrowFunctionExpression" &&
       node.init.type !== "FunctionExpression"
-    ) {
+    )
       preserve(node);
-      preserve(node.init);
-      initializers.push(node.init);
-    }
-    for (const value of Object.values(node)) {
+    const fields = evaluatedChildFields[node.type] ?? [];
+    for (const [field, value] of Object.entries(node)) {
       if (Array.isArray(value)) {
-        for (const child of value) if (child && typeof child.type === "string") visit(child);
+        for (const child of value)
+          if (child && typeof child.type === "string") visit(child, fields.includes(field));
       } else if (
         value &&
         typeof value === "object" &&
         "type" in value &&
         typeof value.type === "string"
       ) {
-        visit(value as AnyNode);
+        visit(value as AnyNode, fields.includes(field));
       }
     }
   }
   visit(program);
-  // Retain runtime initializer mappings, including multiline values and arguments.
-  // Ambiguous nested declaration mappings stay counted rather than being discarded.
-  for (const mapping of mappings) {
-    if (initializers.some((range) => mapping.offset >= range.start && mapping.offset < range.end))
-      executable.add(mapping.line);
-  }
   const declarations = new Set<number>();
   for (const header of headers) {
     const body = [...operationsByOffset].filter(

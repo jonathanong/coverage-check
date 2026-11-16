@@ -337,4 +337,75 @@ describe("executable arrow declaration patch coverage", () => {
     expect(result.buckets[0]).toMatchObject({ coverable: 2, hit: 1, passed: false });
     expect(result.missingCoverage).toEqual([]);
   });
+  it.each([
+    ["call argument", "call(\n  42); const callback = () =>\n    run();"],
+    ["new argument", "new Factory(\n  value); const callback = () =>\n    run();"],
+    [
+      "return argument",
+      "function choose() { if (stop) return (\n  42); const callback = () =>\n    run(); }",
+    ],
+    [
+      "throw argument",
+      "function choose() { if (stop) throw (\n  value); const callback = () =>\n    run(); }",
+    ],
+    ["assignment RHS", "target = (\n  42); const callback = () =>\n    run();"],
+    ["for-of iterable", "for (const value of\n  items) { const callback = () =>\n    run(); }"],
+    ["for-in object", "for (const key in\n  object) { const callback = () =>\n    run(); }"],
+    ["if condition", "if (\n  condition) { const callback = () =>\n    run(); }"],
+    ["while condition", "while (\n  condition) { const callback = () =>\n    run(); }"],
+    ["array element", "[\n  42]; const callback = () =>\n    run();"],
+    ["binary operand", "first +\n  second; const callback = () =>\n    run();"],
+    ["logical operand", "first &&\n  second; const callback = () =>\n    run();"],
+    ["conditional arm", "condition ?\n  first : second; const callback = () =>\n    run();"],
+    ["sequence operand", "(first,\n  second); const callback = () =>\n    run();"],
+    ["computed member", "object[\n  key]; const callback = () =>\n    run();"],
+    ["named member", "object.\n  field; const callback = () =>\n    run();"],
+    ["spread argument", "call(...\n  values); const callback = () =>\n    run();"],
+    ["template substitution", "tag`${\n  value}`; const callback = () =>\n    run();"],
+    [
+      "await argument",
+      "async function choose() { await (\n  value); const callback = () =>\n    run(); }",
+    ],
+    [
+      "yield argument",
+      "function* choose() { yield (\n  value); const callback = () =>\n    run(); }",
+    ],
+    ["import source", "import(\n  path); const callback = () =>\n    run();"],
+    ["break", "for (;;) { if (stop)\n  break; const callback = () =>\n    run(); }"],
+    ["continue", "for (;;) { if (stop)\n  continue; const callback = () =>\n    run(); }"],
+    ["debugger", "if (debug)\n  debugger; const callback = () =>\n    run();"],
+    ["catch entry", "try { work(); }\n  catch (error) { const callback = () =>\n    run(); }"],
+    ["finally entry", "try { work(); }\n  finally { const callback = () =>\n    run(); }"],
+    ["switch test", "switch (\n  value) { default: const callback = () =>\n    run(); }"],
+    ["case test", "switch (value) { case\n  key: const callback = () =>\n    run(); }"],
+  ])("retains a shared arrow-header counter for %s", (_name, contents) => {
+    const result = check(`SF:${file}\nDA:2,0\nDA:3,1\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(result.buckets[0]).toMatchObject({ coverable: 2, hit: 1, passed: false });
+    expect(result.missingCoverage).toEqual([]);
+  });
+
+  it("does not treat synthetic JSX props-object starts or noncomputed callback keys as runtime operands", () => {
+    const contents = "export const view = <Controls\n  approve={() =>\n    confirm()}/>;";
+    const result = check(`SF:${file}\nDA:2,0\nDA:3,2\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(result.buckets[0]).toMatchObject({ coverable: 1, hit: 1, passed: true });
+    expect(result.missingCoverage).toEqual([]);
+  });
+  it.each([
+    "if (flag) { call(\n  {}); } const callback = () =>\n    run();",
+    "if (flag) { call(\n  []); } const callback = () =>\n    run();",
+  ])("retains real empty literal allocations sharing an arrow header: %s", (contents) => {
+    expect(
+      check(`SF:${file}\nDA:2,0\nDA:3,1\nend_of_record\n`, contents, [1, 2, 3]).buckets[0],
+    ).toMatchObject({ coverable: 2, hit: 1, passed: false });
+  });
+
+  it.each([
+    "export function View() { return <Controls\n  approve={() =>\n    confirm()}/>; }",
+    "render({\n  approve: () =>\n    confirm() });",
+    "const view = render({\n  approve: () =>\n    confirm() });",
+  ])("keeps pure callback wrappers separate from container evaluation: %s", (contents) => {
+    expect(
+      check(`SF:${file}\nDA:2,0\nDA:3,2\nend_of_record\n`, contents, [1, 2, 3]).buckets[0],
+    ).toMatchObject({ coverable: 1, hit: 1, passed: true });
+  });
 });
