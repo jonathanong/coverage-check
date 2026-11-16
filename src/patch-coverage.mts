@@ -9,6 +9,7 @@ import type {
 } from "./types.mts";
 import { matchRule } from "./rules.mts";
 import { findMissingCoverage } from "./scope.mts";
+import { analyzeExecutableLines } from "./source-executable-lines.mts";
 
 export function computePatchCoverage(
   diff: DiffLines,
@@ -28,12 +29,21 @@ export function computePatchCoverage(
     const fileLines = lcov.get(file);
     if (fileLines === undefined) continue; // not in lcov scope — skip
 
+    let declarations = new Set<number>();
+    if (readSource && [...changedLineSet].some((line) => fileLines.has(line))) {
+      try {
+        declarations = analyzeExecutableLines(readSource(file), file).declarations;
+      } catch {
+        // Source proof is optional for existing counters: unavailable or unsupported source
+        // must retain every DA entry. Missing-file scope analysis below still fails closed.
+      }
+    }
     const coverable: number[] = [];
     const uncoveredLines: number[] = [];
     let hit = 0;
 
     for (const lineNo of changedLineSet) {
-      if (!fileLines.has(lineNo)) continue; // line not tracked by coverage
+      if (declarations.has(lineNo) || !fileLines.has(lineNo)) continue; // line not tracked by coverage
       coverable.push(lineNo);
       if (fileLines.get(lineNo)! > 0) {
         hit++;
