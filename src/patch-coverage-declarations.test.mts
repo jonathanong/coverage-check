@@ -265,4 +265,22 @@ describe("executable arrow declaration patch coverage", () => {
     expect(result.buckets).toEqual([]);
     expect(result.missingCoverage).toEqual([]);
   });
+  it("requires instrumentation for a class declaration's superclass evaluation inside a callback", () => {
+    const contents = "export const create = () => {\n  class Derived extends Base {}\n};\n";
+    const missing = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(missing.buckets).toEqual([]);
+    expect(missing.missingCoverage).toEqual([{ file, lines: [2], rule: "src/**" }]);
+    const unhit = check(`SF:${file}\nDA:1,1\nDA:2,0\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(unhit.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
+    expect(unhit.missingCoverage).toEqual([]);
+    const hit = check(`SF:${file}\nDA:1,1\nDA:2,1\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(hit.buckets[0]).toMatchObject({ coverable: 1, hit: 1, passed: true });
+  });
+
+  it("does not invent superclass evaluation for a bare class declaration", () => {
+    const contents = "export const create = () => {\n  class Bare {}\n};\n";
+    const result = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(result.buckets).toEqual([]);
+    expect(result.missingCoverage).toEqual([]);
+  });
 });
