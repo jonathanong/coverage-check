@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { computePatchCoverage } from "./patch-coverage.mts";
 import { parseLcov } from "./lcov-parser.mts";
 import { mergeLcov } from "./lcov-merge.mts";
+import { projectPatchLcov } from "./patch-contribution.mts";
 
 const file = "src/actions.tsx";
 const rules = [{ paths: "src/**", patch_coverage_min: 100 }];
@@ -357,5 +358,40 @@ describe("executable arrow declaration patch coverage", () => {
     expect(() => check("", "export const broken = (", [1])).toThrow(
       "failed to analyze coverage scope",
     );
+  });
+  it("keeps full and projected LCOV equivalent when an unchanged statement anchor owns changed expressions", async () => {
+    const contents =
+      "export const choose = condition => {\n  return condition\n    ? foo()\n    : bar();\n};\n";
+    const full = await statementOnlyLcov(contents);
+    const changed = [1, 3, 4];
+    const sparse = projectPatchLcov(full, new Map([[file, new Set(changed)]]));
+    expect(parseLcov(full).get(file)?.has(2)).toBe(true);
+    expect(parseLcov(sparse).get(file)?.has(2)).toBe(false);
+    const fullResult = check(full, contents, changed);
+    const sparseResult = check(sparse, contents, changed);
+    expect(fullResult.missingCoverage).toEqual([]);
+    expect(sparseResult).toEqual(fullResult);
+  });
+
+  it("still detects wholly changed callback bodies missing from projected header-only instrumentation", () => {
+    const contents =
+      "export const choose = condition => {\n  return condition\n    ? foo()\n    : bar();\n};\n";
+    const changed = [1, 2, 3, 4, 5];
+    const full = `SF:${file}\nFN:1,choose\nFNDA:0,choose\nDA:1,0\nend_of_record\n`;
+    const sparse = projectPatchLcov(full, new Map([[file, new Set(changed)]]));
+    const fullResult = check(full, contents, changed);
+    expect(fullResult.missingCoverage).toEqual([{ file, lines: [2, 3, 4], rule: "src/**" }]);
+    expect(check(sparse, contents, changed)).toEqual(fullResult);
+  });
+
+  it("preserves genuinely uncovered changed statement counters in full and projected LCOV", async () => {
+    const contents =
+      "export const choose = condition => {\n  return condition\n    ? foo()\n    : bar();\n};\n";
+    const full = (await statementOnlyLcov(contents)).replace("DA:2,2", "DA:2,0");
+    const changed = [1, 2, 3, 4];
+    const sparse = projectPatchLcov(full, new Map([[file, new Set(changed)]]));
+    const fullResult = check(full, contents, changed);
+    expect(fullResult.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
+    expect(check(sparse, contents, changed)).toEqual(fullResult);
   });
 });
