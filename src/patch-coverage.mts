@@ -49,8 +49,10 @@ export function computePatchCoverage(
       const missing = new Set<number>();
       for (const [header, lines] of bodyLines) {
         if (!changedLineSet.has(header) || !fileLines.has(header)) continue;
+        // Providers count statements, not every mapped expression inside a callback body.
+        if ([...lines].some((line) => fileLines.has(line))) continue;
         for (const line of lines) {
-          if (changedLineSet.has(line) && !fileLines.has(line)) missing.add(line);
+          if (changedLineSet.has(line)) missing.add(line);
         }
       }
       if (missing.size > 0)

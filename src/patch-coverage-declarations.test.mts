@@ -1,3 +1,12 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { parse } from "acorn";
+import { convert } from "ast-v8-to-istanbul";
+import libCoverage from "istanbul-lib-coverage";
+import libReport from "istanbul-lib-report";
+import reports from "istanbul-reports";
 import { describe, expect, it } from "vitest";
 import { computePatchCoverage } from "./patch-coverage.mts";
 import { parseLcov } from "./lcov-parser.mts";
@@ -26,6 +35,36 @@ function check(text: string, contents = source, lines = [3, 4, 6, 7]) {
     scope,
     () => contents,
   );
+}
+
+/** Real statement/branch maps: the return owns one DA counter; its alternatives own BRDA only. */
+async function statementOnlyLcov(contents: string): Promise<string> {
+  const directory = mkdtempSync(join(tmpdir(), "coverage-check-arrow-statements-"));
+  try {
+    const coverage = await convert({
+      ast: parse(contents, { ecmaVersion: "latest", sourceType: "module", locations: true }),
+      code: contents,
+      coverage: {
+        url: pathToFileURL(resolve(file)).href,
+        functions: [
+          {
+            functionName: "",
+            isBlockCoverage: true,
+            ranges: [{ startOffset: 0, endOffset: contents.length, count: 2 }],
+          },
+        ],
+      },
+    });
+    reports.create("lcovonly", { projectRoot: process.cwd() }).execute(
+      libReport.createContext({
+        dir: directory,
+        coverageMap: libCoverage.createCoverageMap(coverage),
+      }),
+    );
+    return readFileSync(join(directory, "lcov.info"), "utf8");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 describe("executable arrow declaration patch coverage", () => {
@@ -197,6 +236,33 @@ describe("executable arrow declaration patch coverage", () => {
   it("does not infer missing instrumentation from an untracked declaration", () => {
     const result = check(`SF:${file}\nDA:4,2\nend_of_record\n`, source, [3, 4]);
     expect(result.buckets[0]).toMatchObject({ coverable: 1, hit: 1, passed: true });
+    expect(result.missingCoverage).toEqual([]);
+  });
+  it("accepts statement-only body instrumentation without requiring DA on conditional alternatives", async () => {
+    const contents =
+      "export const choose = (condition) => {\n  return condition\n    ? foo()\n    : bar();\n};\n";
+    const lcov = await statementOnlyLcov(contents);
+    expect([...parseLcov(lcov).get(file)!.keys()]).toEqual([1, 2]);
+    expect(lcov).toContain("BRDA:2,0,0,2");
+    expect(lcov).toContain("BRDA:2,0,1,2");
+    const result = check(lcov, contents, [1, 2, 3, 4, 5]);
+    expect(result.buckets[0]).toMatchObject({ coverable: 1, hit: 1, passed: true });
+    expect(result.missingCoverage).toEqual([]);
+    // A genuine zero statement remains uncovered even with positive function/branch counters.
+    const unhit = check(lcov.replace("DA:2,2", "DA:2,0"), contents, [1, 2, 3, 4, 5]);
+    expect(unhit.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
+    expect(unhit.missingCoverage).toEqual([]);
+  });
+
+  it("recognizes an unchanged body statement anchor for changed multiline expressions", () => {
+    const contents =
+      "export const choose = condition => {\n  return condition\n    ? foo()\n    : bar();\n};\n";
+    const result = check(
+      `SF:${file}\nDA:1,0\nDA:2,2\nBRDA:2,0,0,2\nBRDA:2,0,1,2\nend_of_record\n`,
+      contents,
+      [1, 3, 4],
+    );
+    expect(result.buckets).toEqual([]);
     expect(result.missingCoverage).toEqual([]);
   });
 });
