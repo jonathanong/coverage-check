@@ -113,6 +113,12 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
     }
     if (operations.has(node.type)) preserve(node);
     if (node.type === "ClassDeclaration" && node.superClass) preserve(node.superClass);
+    if (node.type === "PropertyDefinition") {
+      preserve(node);
+      if (node.value) preserve(node.value);
+      if (node.computed) preserve(node.key);
+    }
+    if (node.type === "MethodDefinition" && node.computed) preserve(node.key);
     if (node.type === "Property") {
       if (node.computed) preserve(node.key);
       if (node.value.type !== "ArrowFunctionExpression") preserve(node.value);

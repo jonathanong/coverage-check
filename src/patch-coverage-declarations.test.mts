@@ -283,4 +283,46 @@ describe("executable arrow declaration patch coverage", () => {
     expect(result.buckets).toEqual([]);
     expect(result.missingCoverage).toEqual([]);
   });
+  it.each([
+    "static value = 1;",
+    "static value;",
+    "value = 1;",
+    "[key];",
+    "static [key] = 1;",
+    "[key]() {}",
+    "get [key]() {}",
+    "static { const value = 1; }",
+  ])("retains class member execution inside callback bodies: %s", (member) => {
+    const contents = `export const create = () => {\n  class C { ${member} }\n};\n`;
+    const missing = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(missing.buckets).toEqual([]);
+    expect(missing.missingCoverage).toEqual([{ file, lines: [2], rule: "src/**" }]);
+    const unhit = check(`SF:${file}\nDA:1,1\nDA:2,0\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(unhit.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
+    const hit = check(`SF:${file}\nDA:1,1\nDA:2,1\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(hit.buckets[0]).toMatchObject({ coverable: 1, hit: 1, passed: true });
+  });
+
+  it("accepts a multiline static initializer's value counter without requiring a separate field-key counter", async () => {
+    const contents =
+      "export const create = () => {\n  class C {\n    static value =\n      1;\n  }\n};\n";
+    const lcov = await statementOnlyLcov(contents);
+    expect([...parseLcov(lcov).get(file)!.keys()]).toEqual([1, 4]);
+    const result = check(lcov, contents, [1, 2, 3, 4, 5, 6]);
+    expect(result.buckets[0]).toMatchObject({ coverable: 1, hit: 1, passed: true });
+    expect(result.missingCoverage).toEqual([]);
+  });
+
+  it("retains original counters when auto-accessor syntax is unsupported by the existing parser", () => {
+    const contents = "export const create = () => {\n  class C { accessor value = 1; }\n};\n";
+    const result = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(result.buckets[0]).toMatchObject({ coverable: 1, hit: 0, passed: false });
+  });
+
+  it("does not invent body operations for an empty static block", () => {
+    const contents = "export const create = () => {\n  class C { static {} }\n};\n";
+    const result = check(`SF:${file}\nDA:1,0\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(result.buckets).toEqual([]);
+    expect(result.missingCoverage).toEqual([]);
+  });
 });
