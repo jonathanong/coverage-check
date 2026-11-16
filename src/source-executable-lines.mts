@@ -54,6 +54,13 @@ export function executableLineNumbers(source: string, path: string): Set<number>
 }
 
 function arrowDeclarationLines(code: string, sourceMap: string) {
+  let program: ReturnType<typeof parse>;
+  try {
+    program = parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true });
+  } catch {
+    // Declaration proof is optional; esbuild's emitted lines remain authoritative for scope.
+    return { declarations: new Set<number>(), bodyLines: new Map<number, Set<number>>() };
+  }
   const map = new TraceMap(sourceMap);
   const offsets = [0];
   for (let index = 0; index < code.length; index++) {
@@ -68,6 +75,7 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
   });
   const headers: { start: number; end: number; bodyEnd: number }[] = [];
   const bodyLines = new Map<number, Set<number>>();
+  const defaultInitializers: { start: number; end: number }[] = [];
   const operationsByOffset = new Map<number, number | null>();
   const executable = new Set<number>();
   const preserve = (node: AnyNode) => {
@@ -112,6 +120,10 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
       if (body.type !== "BlockStatement") preserve(body);
     }
     if (operations.has(node.type)) preserve(node);
+    if (node.type === "AssignmentPattern") {
+      preserve(node.right);
+      defaultInitializers.push(node.right);
+    }
     if (node.type === "ClassDeclaration" && node.superClass) preserve(node.superClass);
     if (node.type === "PropertyDefinition") {
       preserve(node);
@@ -143,7 +155,17 @@ function arrowDeclarationLines(code: string, sourceMap: string) {
       }
     }
   }
-  visit(parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true }));
+  visit(program);
+  // Retain mappings throughout default RHS expressions, including multiline values and arguments.
+  // Ambiguous nested declaration mappings stay counted rather than being discarded.
+  for (const mapping of mappings) {
+    if (
+      defaultInitializers.some(
+        (range) => mapping.offset >= range.start && mapping.offset < range.end,
+      )
+    )
+      executable.add(mapping.line);
+  }
   const declarations = new Set<number>();
   for (const header of headers) {
     const body = [...operationsByOffset].filter(

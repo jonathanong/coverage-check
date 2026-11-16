@@ -325,4 +325,37 @@ describe("executable arrow declaration patch coverage", () => {
     expect(result.buckets).toEqual([]);
     expect(result.missingCoverage).toEqual([]);
   });
+  it.each([
+    "export const callback = (value =\n  42\n) => value;",
+    "export const callback = (value =\n  fallback\n) => value;",
+    "export const callback = ({value =\n  42\n} = {}) => value;",
+    "export const callback = ([value =\n  42\n] = []) => value;",
+    "export const callback = (value = [\n  42\n]) => value;",
+    "export const callback = (value = [[\n  fallback\n]]) => value;",
+    "export const callback = (value = pick(\n  fallback\n)) => value;",
+    "export const callback = ({\n  [key]: value\n} = {}) => value;",
+    "export const callback = (value = { items: [\n  42\n] }) => value;",
+    "export const callback = (value = collect(...\n  defaults\n)) => value;",
+  ])("retains multiline default initializer counters: %s", (contents) => {
+    const result = check(`SF:${file}\nDA:2,0\nDA:3,1\nend_of_record\n`, contents, [1, 2, 3]);
+    expect(result.buckets[0]).toMatchObject({ coverable: 2, hit: 1, passed: false });
+    expect(result.missingCoverage).toEqual([]);
+  });
+
+  it.each(["// changed comment", "type Options = { value: number };"])(
+    "uses emitted-line scope analysis for unsupported optional-parser syntax after %s",
+    (prefix) => {
+      const contents = `${prefix}\nexport class Store { accessor value = 1; }\n`;
+      expect(check("", contents, [1]).missingCoverage).toEqual([]);
+      expect(check("", contents, [2]).missingCoverage).toEqual([
+        { file, lines: [2], rule: "src/**" },
+      ]);
+    },
+  );
+
+  it("still rejects invalid source in fail-closed missing-artifact analysis", () => {
+    expect(() => check("", "export const broken = (", [1])).toThrow(
+      "failed to analyze coverage scope",
+    );
+  });
 });
